@@ -11,11 +11,11 @@
 #define columns 8
 #define directionsize 28
 
-//debug.txt'ye bakarsak calculate function'unun öncesindeki printf kısmından 889 sonraki kısmınndan 890 tane var
-// benzer şekilde tek threadin search'i recursive olarak çağırma kısmında öncesindeki kısmında sonrakindeki kısmına göre
-// 2 tane daha fazla var
-pthread_mutex_t mutexcalcrunning = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t filemutex = PTHREAD_MUTEX_INITIALIZER;
+// MARBLE KESIN SORUNLU hepsi 0 gözüküyo
+// PLACE yanlış hesaplıyo
+// 135 de yanlış hesaplıyo
+// 45 de yanlış hesaplıyo (135 ile aynı sonuç çıkıyo)
+// vertical da horizontal da yanlış
 
 int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1;
@@ -54,15 +54,12 @@ int frames[17][13] = {{4,0,0,0,1,1,0,1,1,-1,-1,-1,-1},
                         {3,7,2,7,3,7,4,-1,-1,-1,-1,-1,-1},
                         {4,6,6,6,7,7,6,7,7,-1,-1,-1,-1}};
 
-
 typedef struct {
     int color;
     int** board;
     void* (*func)(void*);
     int result;
     bool returned;
-    pthread_cond_t cond;
-    pthread_mutex_t mutex;
 }Data2;
 
 typedef struct Node {
@@ -81,15 +78,17 @@ typedef struct {
     int* path;
     int result;
     bool returned;
-    pthread_cond_t cond;
-    pthread_mutex_t mutex;
 }Data;
 
-// 0. index nedense executelenmiyo
-// x tane head = %d iken döndü kısmı varsa x-1 tane returned gösteriyo
-// üstte 2 tane CALCPOP'la başlayan statement olmasına rağmen 5 tane head = %d statementi var
-// olay 99.99999% bu kısımla alakalı hele 3. yorum satırındaki olay kesin bişeyler diyo
-
+void print_board(int** board){
+    int i, j;
+    for(i = 0;i < 8;i++){
+        for(j = 0;j < 8;j++){
+            printf("%d ",board[i][j]);
+        }
+        printf("\n");
+    }
+}
 void* horizontal_points(void *arg){
     int i,j,length = 0,pc = 0,user = 0;
 
@@ -144,11 +143,14 @@ void* horizontal_points(void *arg){
     }
     *result = pc - user;
 
-
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
+
     free(board);
+
+    printf("HORIZONTAL RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* vertical_points(void *arg){
@@ -202,11 +204,14 @@ void* vertical_points(void *arg){
     }
 
     *result = pc - user;
-
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
+
     free(board);
+
+    printf("VERTICAL RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* diagonal_points_45(void *arg){
@@ -266,12 +271,13 @@ void* diagonal_points_45(void *arg){
     }
 
     *result = pc - user;
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
     free(board);
+    printf("45 RETURNS %d\n", pc-user);
     return (void*)result;
-
 }
 void* diagonal_points_135(void *arg){
     int i, length = 0, pc = 0, user = 0,x,y;
@@ -294,7 +300,6 @@ void* diagonal_points_135(void *arg){
         pthread_exit(NULL);
     }
 
-
     for(i = 0;i < 7;i++){
         x = places[i][0];
         y = places[i][1];
@@ -313,10 +318,7 @@ void* diagonal_points_135(void *arg){
                     }
                 }
                 length = 1;
-
-
             }
-
             x--;
             y--;
         }
@@ -333,10 +335,12 @@ void* diagonal_points_135(void *arg){
     }
 
     *result = pc - user;
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
     free(board);
+    printf("135 RETURNS %d\n", pc-user);
     return (void*)result;
 }
 int dfs(int i,int j,int** board,int color){
@@ -349,7 +353,6 @@ int dfs(int i,int j,int** board,int color){
     return 1 + dfs(i+1,j,board,color) + dfs(i-1,j,board,color) + dfs(i,j+1,board,color) + dfs(i,j-1,board,color);
 }
 void* marble_area_points(void *arg){
-
     Data2* data = (Data2*)arg;
     int i, j,area1 = 0,area2 = 0,temp;
     int** board = (int**)malloc(8 * sizeof(int*));
@@ -386,17 +389,17 @@ void* marble_area_points(void *arg){
     }
 
     *result = area2 - area1;
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
     free(board);
-
+    printf("MARBLE RETURNS %d\n", area2-area1);
     return (void*)result;
 }
 void* place_area_points(void *arg){
     int i,j,pc = 0,user = 0,length = 0;
     int* result = (int*)malloc(sizeof(int));
-
     Data2* data = (Data2*)arg;
     int** board = (int**)malloc(8 * sizeof(int*));
     for (i = 0;i < 8;i++){
@@ -430,10 +433,13 @@ void* place_area_points(void *arg){
         }
     }
     *result = length;
+    print_board(board);
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
+
     free(board);
+    printf("PLACE RETURNS %d\n", length);
     return (void*)result;
 }
 Data2 copydata2(Data2* data){
@@ -454,7 +460,6 @@ void freedata2(Data2 data){
 }
 
 int* calculate(int color, int** board){
-    printf("CALCULATE FUNCTION\n");
 
     pthread_t* calcthreads = (pthread_t*)malloc(calcfuncsize * sizeof(pthread_t));
     int i;
@@ -485,15 +490,17 @@ int* calculate(int color, int** board){
     for(i = 0;i < calcfuncsize;i++){
         parray[i].result = -1;
         parray[i].returned = false;
-        pthread_cond_init(&parray[i].cond,NULL);
-        pthread_mutex_init(&parray[i].mutex,NULL);
     }
     int* sum = (int*)malloc(1 * sizeof(int));
+    *sum =  *(int*)horizontal_points((void*)&parray[0])  +
+            *(int*)vertical_points((void*)&parray[1])    +
+            *(int*)diagonal_points_45((void*)&parray[2]) +
+            *(int*)diagonal_points_135((void*)&parray[3])+
+            *(int*)place_area_points((void*)&parray[4])  +
+            *(int*)marble_area_points((void*)&parray[5]);
 
-    // ÇAĞIR TOPLA
     //
-    printf("FREEEEEE PARTTTTTTTTTTTTTTTT\n");
-    for(i = 0;i < calcfuncsize;i++){
+    /*for(i = 0;i < calcfuncsize;i++){
         free(result[i]);
     }
     free(result);
@@ -502,7 +509,7 @@ int* calculate(int color, int** board){
     for(i = 0;i < calcfuncsize;i++){
         freedata2(parray[i]);
     }
-    free(parray);
+    free(parray);*/
     return sum;
 }
 
@@ -519,23 +526,19 @@ int which(int x, int y){
     }
 }
 void append(Data *data){
-    pthread_mutex_lock(&filemutex);
 
     int i;
     for(i = 0;i < 33;i++){
         fprintf(file,"%d,",data->path[i]);
     }
     fprintf(file, "\n");
-    pthread_mutex_unlock(&filemutex);
 }
 void* search(void *arg){
-    printf("SEARCH FUNCTION\n");
     int i,j,k,length = 0,maximum = -1,info1,info2,a,b;
     Data* data = (Data*)arg;
     int x = data->x;
     int y = data->y;
     int step = data->step;
-    printf("step = %d\n",step);
     int not_x = data->not_x;
     int not_y = data->not_y;
     int color = data->color;
@@ -620,8 +623,6 @@ void* search(void *arg){
             memcpy(datas[k]->path, result2, 33 * sizeof(int));
             datas[k]->returned = false;
             datas[k]->result = -1;
-            pthread_mutex_init(&datas[k]->mutex,NULL);
-            pthread_cond_init(&datas[k]->cond,NULL);
 
             // NORMAL ÇAĞIR İŞTE YAV
             array[length-1][0] = *(int*)search((void*)datas[k]);
@@ -631,9 +632,7 @@ void* search(void *arg){
         }
     }
     int** results = (int**)malloc(directionsize * sizeof(int*));
-    if (ret){
-        printf("FINALLY\n");
-    }
+
     for(i = 0;i < length;i++){
         if (array[i][0] > maximum){
             maximum = array[i][0];
@@ -705,7 +704,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.path[2] = y;
 
     temp = (int*)search((void*)&data);
-    printf("KEEPS GOING\n");
     board2[temp[0]][temp[1]] = 2;
 
     j = newnode[temp[0]][temp[1]]->frame;
@@ -720,9 +718,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
     }
 
     fclose(file);
-
-
-
     return temp;
 }
 
@@ -750,6 +745,5 @@ int main(){
             newnode[i][j]->frame = which(i,j);
         }
     }
-
     return 0;
 }

@@ -24,14 +24,13 @@ last_move = [-1,-1]
 def button_click(x, y):
     # Change clicked button to red, then get best move and mark it black
     buttons[(x, y)].config(image=red_image)
-    result = functionbest.best_place(x, y, 3, last_move[0], last_move[1])
+    result = functionbest.best_place(x, y, 5, last_move[0], last_move[1])
     if result[0] == -1 and result[1] == -1:
         buttons[(x, y)].config(image=None)
     else:
         last_move[0] = result[0]
         last_move[1] = result[1]
         buttons[(result[0], result[1])].config(image=black_image)
-    print("aaaaaaaaaaaaaaaaaaaaa\n")
 
 buttons = {}
 for i in range(8):
