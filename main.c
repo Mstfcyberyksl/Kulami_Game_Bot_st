@@ -10,6 +10,7 @@
 #define rows 8
 #define columns 8
 #define directionsize 28
+#define framecount 17
 
 // MARBLE KESIN SORUNLU hepsi 0 gözüküyo
 // PLACE yanlış hesaplıyo
@@ -20,7 +21,7 @@
 int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1;
 
-int board2[8][8];
+int** board2;
 FILE* file ;
 
 int marble_result,oneslen = 0;
@@ -36,7 +37,7 @@ int directions[directionsize][2] = {
     {-1, 0}, {-2, 0}, {-3, 0}, {-4, 0}, {-5, 0}, {-6, 0}, {-7, 0}
 };
 
-int frames[17][13] = {{4,0,0,0,1,1,0,1,1,-1,-1,-1,-1},
+int frames[framecount][13] = {{4,0,0,0,1,1,0,1,1,-1,-1,-1,-1},
                         {6,0,2,0,3,0,4,1,2,1,3,1,4},
                         {6,0,5,0,6,1,5,1,6,2,5,2,6},
                         {3,0,7,1,7,2,7,-1,-1,-1,-1,-1,-1},
@@ -415,7 +416,7 @@ void* place_area_points(void *arg){
     for (i = 0;i < 17;i++){
         pc = 0;
         user = 0;
-        for (j = 1; j < frames[i][0]; j += 2){
+        for (j = 1; j < 2 * frames[i][0]; j += 2){
             if (board[frames[i][j]][frames[i][j+1]] == 2){
                 pc++;
             }
@@ -522,6 +523,7 @@ int which(int x, int y){
             }
         }
     }
+    return -1;
 }
 void append(Data *data){
 
@@ -622,7 +624,7 @@ void* search(void *arg){
             datas[k]->returned = false;
             datas[k]->result = -1;
 
-            // NORMAL ÇAĞIR İŞTE YAV
+
             array[length-1][0] = *(int*)search((void*)datas[k]);
             array[length-1][1] = x + directions[k][0];
             array[length-1][2] = y + directions[k][1];
@@ -686,12 +688,9 @@ int* best_place(int x, int y,int step, int lx, int ly){
     int** board3 = (int**)malloc(8 * sizeof(int*));
     for (i = 0;i < 8;i++){
         board3[i] = (int*)malloc(8 * sizeof(int));
+        memcpy(board3[i],board2[i], columns * sizeof(int));
     }
-    for (i = 0;i < 8;i++){
-        for (j = 0;j < 8;j++){
-            board3[i][j] = board2[i][j];
-        }
-    }
+
     data.board = board3;
     data.path = (int*)malloc(33 * sizeof(int));
     for (i = 3;i < 33;i++){
@@ -722,6 +721,10 @@ int* best_place(int x, int y,int step, int lx, int ly){
 int main(){
     int i,j;
     ones = (int**)malloc(1 * sizeof(int*));
+    board2 = (int**)malloc(rows * sizeof(int*));
+    for(i = 0;i < rows;i++){
+        board2[i] = (int*)malloc(columns * sizeof(int));
+    }
     // make everywhere empty
     for (i = 0;i < 8; i++){
         for (j = 0;j < 8;j++){
