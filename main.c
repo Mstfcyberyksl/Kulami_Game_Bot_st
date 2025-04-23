@@ -354,7 +354,7 @@ int dfs(int i,int j,int** board,int color){
 }
 void* marble_area_points(void *arg){
     Data2* data = (Data2*)arg;
-    int i, j,area1 = 0,area2 = 0,temp;
+    int i, j,user = 0, pc = 0, temp;
     int** board = (int**)malloc(8 * sizeof(int*));
     for (i = 0;i < 8;i++){
         board[i] = (int*)malloc(8 * sizeof(int));
@@ -362,7 +362,7 @@ void* marble_area_points(void *arg){
     }
 
     int color = data->color;
-
+    print_board(board);
     int* result = (int*)malloc(sizeof(int));
     if (result == NULL) {
         printf("HEREEEEEEEEEEEEEEEEEEE MARBLE\n");
@@ -373,28 +373,26 @@ void* marble_area_points(void *arg){
     for(i = 0;i < rows;i++){
         for(j = 0;j < columns;j++){
             if(board[i][j] == 1){
-                temp = area1;
-                area1 = dfs(i,j,board,1);
-                if (temp > area1){
-                    area1 = temp;
+                temp = dfs(i,j,board,1);
+                if (temp > user){
+                    user = temp;
                 }
             }else if (board[i][j] == 2){
-                temp = area2;
-                area2 = dfs(i,j,board,2);
-                if (temp > area2){
-                    area2 = temp;
+                temp = dfs(i,j,board,2);
+                if (temp > pc){
+                    pc = temp;
                 }
             }
         }
     }
 
-    *result = area2 - area1;
-    print_board(board);
+    *result = pc - user;
+
     for (i = 0;i < 8;i++){
         free(board[i]);
     }
     free(board);
-    printf("MARBLE RETURNS %d\n", area2-area1);
+    printf("MARBLE RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* place_area_points(void *arg){
