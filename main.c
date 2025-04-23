@@ -90,7 +90,7 @@ void print_board(int** board){
     }
 }
 void* horizontal_points(void *arg){
-    int i,j,length = 0,pc = 0,user = 0;
+    int i,j,length, pc = 0,user = 0;
 
     int* result = (int*)malloc(sizeof(int));
     if (result == NULL) {
@@ -112,9 +112,10 @@ void* horizontal_points(void *arg){
     int color = data->color;
 
     for (i = 0;i < 8;i++){
+        length = 1;
         for (j = 1;j < 8;j++){
 
-            if (j-1 > -1 && board[i][j-1] == board[i][j]){
+            if (board[i][j] != 0 && board[i][j-1] == board[i][j]){
                 length++;
             }
             else{
@@ -138,7 +139,7 @@ void* horizontal_points(void *arg){
                 pc += length;
             }
         }
-        length = 1;
+
 
     }
     *result = pc - user;
@@ -154,7 +155,7 @@ void* horizontal_points(void *arg){
     return (void*)result;
 }
 void* vertical_points(void *arg){
-    int i,j,length = 0,pc = 0,user = 0;
+    int i,j,length,pc = 0,user = 0;
 
     Data2* data = (Data2*)arg;
     int** board = (int**)malloc(8 * sizeof(int*));
@@ -173,9 +174,10 @@ void* vertical_points(void *arg){
     }
 
     for (j = 0;j < 8;j++){
+        length = 1;
         for (i = 1;i < 8;i++){
 
-            if (i-1 > -1 && board[i-1][j] == board[i][j]){
+            if (board[i][j] != 0 && board[i-1][j] == board[i][j]){
                 length++;
             }
             else{
@@ -199,8 +201,6 @@ void* vertical_points(void *arg){
                 pc += length;
             }
         }
-        length = 1;
-
     }
 
     *result = pc - user;
@@ -215,7 +215,7 @@ void* vertical_points(void *arg){
     return (void*)result;
 }
 void* diagonal_points_45(void *arg){
-    int i , length = 0, pc = 0, user = 0,x,y;
+    int i , length, pc = 0, user = 0,x,y;
     int places[7][2] = {
         {7,0},{6,0},{5,0},{4,0},{7,3},{7,2},{7,1}
     };
@@ -241,7 +241,7 @@ void* diagonal_points_45(void *arg){
         y = places[i][1];
         length = 1;
         while (x < 8 && y < 8 && x > -1 && y > -1){
-            if (x+1 < 8 && x+1 > -1 && y-1 < 8 && y-1 > -1 &&  board[x][y] == board[x+1][y-1]){
+            if (x+1 < 8 && x+1 > -1 && y-1 < 8 && y-1 > -1 && board[x][y] != 0 && board[x][y] == board[x+1][y-1]){
                 length++;
             }
             else{
@@ -280,7 +280,7 @@ void* diagonal_points_45(void *arg){
     return (void*)result;
 }
 void* diagonal_points_135(void *arg){
-    int i, length = 0, pc = 0, user = 0,x,y;
+    int i, length, pc = 0, user = 0,x,y;
     int places[7][2] = {
         {7,4},{6,7},{5,7},{4,7},{7,5},{7,6},{7,7}
     };
@@ -305,7 +305,7 @@ void* diagonal_points_135(void *arg){
         y = places[i][1];
         length = 0;
         while (x > -1 && y > -1){
-            if (x+1 < 8 && x+1 > -1 && y+1 < 8 && y+1 > -1 && board[x][y] == board[x+1][y+1]){
+            if (x+1 < 8 && x+1 > -1 && y+1 < 8 && y+1 > -1 && board[x][y] != 0 && board[x][y] == board[x+1][y+1]){
                 length++;
             }
             else{
