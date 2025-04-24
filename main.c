@@ -12,11 +12,6 @@
 #define directionsize 28
 #define framecount 17
 #define path_size 33
-// MARBLE KESIN SORUNLU hepsi 0 gözüküyo
-// PLACE yanlış hesaplıyo
-// 135 de yanlış hesaplıyo
-// 45 de yanlış hesaplıyo (135 ile aynı sonuç çıkıyo)
-// vertical da horizontal da yanlış
 
 int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1;
@@ -74,45 +69,36 @@ typedef struct {
     bool ret;
     int** board;
     int* path;
-    int result;
-    bool returned;
 }Data;
 
 void print_board(int** board){
-    int i, j;
-    for(i = 0;i < rows;i++){
-        for(j = 0;j < columns;j++){
+    for(int i = 0;i < rows;i++){
+        for(int j = 0;j < columns;j++){
             printf("%d ",board[i][j]);
         }
         printf("\n");
     }
 }
 void* horizontal_points(void *arg){
-    int i,j,length, pc = 0,user = 0;
+    int length, pc = 0,user = 0;
 
     int* result = (int*)malloc(sizeof(int));
     if (result == NULL) {
-        printf("HEREEEEEEEEEEEEEEEEEEE HORIZONTAL\n");
-        perror("Failed to allocate memory horizontal");
+        perror("Failed to allocate memory in horizontal_points function");
         pthread_exit(NULL);
     }
     Data2* data = (Data2*)arg;
-    /*if (!data || !data->board || !data->board[0]) {
-        printf("Invalid board dataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
-    }*/
 
     int** board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
-
     int color = data->color;
 
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         length = 1;
-        for (j = 1;j < columns;j++){
-
+        for (int j = 1;j < columns;j++){
             if (board[i][j] != 0 && board[i][j-1] == board[i][j]){
                 length++;
             }
@@ -128,7 +114,6 @@ void* horizontal_points(void *arg){
                 length = 1;
             }
         }
-
         if (length >= 5){
             if (board[i][7] == 1){
                 user += length;
@@ -137,19 +122,13 @@ void* horizontal_points(void *arg){
                 pc += length;
             }
         }
-
-
     }
-    *result = pc - user;
 
-    print_board(board);
-    for (i = 0;i < rows;i++){
+    *result = pc - user;
+    for (int i = 0;i < rows;i++){
         free(board[i]);
     }
-
     free(board);
-
-    printf("HORIZONTAL RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* vertical_points(void *arg){
@@ -166,15 +145,13 @@ void* vertical_points(void *arg){
 
     int* result = (int*)malloc(sizeof(int));
     if (result == NULL) {
-        printf("HEREEEEEEEEEEEEEEEEEEE VERTICAL\n");
-        perror("Failed to allocate memory vertical");
+        perror("Failed to allocate memory in vertical_points function");
         pthread_exit(NULL);
     }
 
     for (j = 0;j < rows;j++){
         length = 1;
         for (i = 1;i < columns;i++){
-
             if (board[i][j] != 0 && board[i-1][j] == board[i][j]){
                 length++;
             }
@@ -190,7 +167,6 @@ void* vertical_points(void *arg){
                 length = 1;
             }
         }
-
         if (length >= 5){
             if (board[7][j] == 1){
                 user += length;
@@ -202,25 +178,20 @@ void* vertical_points(void *arg){
     }
 
     *result = pc - user;
-    print_board(board);
     for (i = 0;i < rows;i++){
         free(board[i]);
     }
-
     free(board);
-
-    printf("VERTICAL RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* diagonal_points_45(void *arg){
-    int i , length, pc = 0, user = 0,x,y;
+    int length, pc = 0, user = 0, x, y;
     int places[7][2] = {
         {7,0},{6,0},{5,0},{4,0},{7,3},{7,2},{7,1}
     };
-
     Data2* data = (Data2*)arg;
     int** board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
@@ -233,8 +204,7 @@ void* diagonal_points_45(void *arg){
         pthread_exit(NULL);
     }
 
-
-    for(i = 0;i < 7;i++){
+    for(int i = 0;i < 7;i++){
         x = places[i][0];
         y = places[i][1];
         length = 1;
@@ -269,23 +239,21 @@ void* diagonal_points_45(void *arg){
     }
 
     *result = pc - user;
-    print_board(board);
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         free(board[i]);
     }
     free(board);
-    printf("45 RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* diagonal_points_135(void *arg){
-    int i, length, pc = 0, user = 0,x,y;
+    int length, pc = 0, user = 0,x,y;
     int places[7][2] = {
         {7,4},{6,7},{5,7},{4,7},{7,5},{7,6},{7,7}
     };
 
     Data2* data = (Data2*)arg;
     int** board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
@@ -298,7 +266,7 @@ void* diagonal_points_135(void *arg){
         pthread_exit(NULL);
     }
 
-    for(i = 0;i < 7;i++){
+    for(int i = 0;i < 7;i++){
         x = places[i][0];
         y = places[i][1];
         length = 0;
@@ -333,12 +301,10 @@ void* diagonal_points_135(void *arg){
     }
 
     *result = pc - user;
-    print_board(board);
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         free(board[i]);
     }
     free(board);
-    printf("135 RETURNS %d\n", pc-user);
     return (void*)result;
 }
 int dfs(int i,int j,int** board,int color){
@@ -352,24 +318,22 @@ int dfs(int i,int j,int** board,int color){
 }
 void* marble_area_points(void *arg){
     Data2* data = (Data2*)arg;
-    int i, j,user = 0, pc = 0, temp;
+    int user = 0, pc = 0, temp;
     int** board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
-
     int color = data->color;
-    print_board(board);
+
     int* result = (int*)malloc(sizeof(int));
     if (result == NULL) {
-        printf("HEREEEEEEEEEEEEEEEEEEE MARBLE\n");
         perror("Failed to allocate memory marble area");
         pthread_exit(NULL);
     }
 
-    for(i = 0;i < rows;i++){
-        for(j = 0;j < columns;j++){
+    for(int i = 0;i < rows;i++){
+        for(int j = 0;j < columns;j++){
             if(board[i][j] == 1){
                 temp = dfs(i,j,board,1);
                 if (temp > user){
@@ -386,19 +350,18 @@ void* marble_area_points(void *arg){
 
     *result = pc - user;
 
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         free(board[i]);
     }
     free(board);
-    printf("MARBLE RETURNS %d\n", pc-user);
     return (void*)result;
 }
 void* place_area_points(void *arg){
-    int i,j,pc = 0,user = 0,length = 0;
+    int pc = 0,user = 0,length = 0;
     int* result = (int*)malloc(sizeof(int));
     Data2* data = (Data2*)arg;
     int** board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
@@ -410,10 +373,10 @@ void* place_area_points(void *arg){
         pthread_exit(NULL);
     }
 
-    for (i = 0;i < 17;i++){
+    for (int i = 0;i < 17;i++){
         pc = 0;
         user = 0;
-        for (j = 1; j < 2 * frames[i][0]; j += 2){
+        for (int j = 1; j < 2 * frames[i][0]; j += 2){
             if (board[frames[i][j]][frames[i][j+1]] == 2){
                 pc++;
             }
@@ -429,13 +392,10 @@ void* place_area_points(void *arg){
         }
     }
     *result = length;
-    print_board(board);
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         free(board[i]);
     }
-
     free(board);
-    printf("PLACE RETURNS %d\n", length);
     return (void*)result;
 }
 Data2 copydata2(Data2* data){
@@ -456,17 +416,15 @@ void freedata2(Data2* data){
 }
 
 int* calculate(int color, int** board){
-    int i;
-
     Data2* data = (Data2*)malloc(sizeof(Data2));
     data->color = color;
     data->board = (int**)malloc(rows * sizeof(int*));
-    for (i = 0;i < rows;i++){
+    for (int i = 0;i < rows;i++){
         data->board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(data->board[i],board[i],columns * sizeof(int));
     }
     Data2* parray = (Data2*)malloc(calcfuncsize * sizeof(Data2));
-    for(i = 0;i < calcfuncsize;i++){
+    for(int i = 0;i < calcfuncsize;i++){
         parray[i] = copydata2(data);
     }
 
@@ -480,7 +438,7 @@ int* calculate(int color, int** board){
 
     freedata2(data);
     free(data);
-    for(i = 0;i < calcfuncsize;i++){
+    for(int i = 0;i < calcfuncsize;i++){
         freedata2(&parray[i]);
     }
     free(parray);
@@ -488,11 +446,8 @@ int* calculate(int color, int** board){
 }
 
 int which(int x, int y){
-    int j;
-    int i;
-
-    for (i = 0;i < 17;i++){
-        for (j = 1;j < 2 * frames[i][0];j += 2){
+    for (int i = 0;i < 17;i++){
+        for (int j = 1;j < 2 * frames[i][0];j += 2){
             if (frames[i][j] == x && frames[i][j+1] == y){
                 return i;
             }
@@ -501,15 +456,13 @@ int which(int x, int y){
     return -1;
 }
 void append(Data *data){
-
-    int i;
-    for(i = 0;i < path_size;i++){
+    for(int i = 0;i < path_size;i++){
         fprintf(file,"%d,",data->path[i]);
     }
     fprintf(file, "\n");
 }
 void* search(void *arg){
-    int i,j,k,length = 0,maximum = -1,info1,info2,a,b;
+    int length = 0,maximum = -1,info1,info2,a,b;
     Data* data = (Data*)arg;
     int x = data->x;
     int y = data->y;
@@ -520,15 +473,14 @@ void* search(void *arg){
     bool ret = data->ret;
     int** board = (int**)malloc(rows * sizeof(int*));
     int* result2 = (int*)malloc(path_size * sizeof(int));
-    for(i = 0;i < rows;i++){
+    for(int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
     memcpy(result2, data->path, path_size * sizeof(int));
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
-    // normalde her birine malloc yapmaya gerek yok
-    //ama freelerken double free olmaması için yapıyom şuanlık ilerde geliştirilebilir
-    for (i = 0;i < directionsize;i++){
+    // may improve here (memory allocation part above)
+    for (int i= 0;i < directionsize;i++){
         datas[i] = (Data*)malloc(sizeof(Data));
     }
     int** array;
@@ -561,7 +513,7 @@ void* search(void *arg){
     }
     int* used = (int*)malloc((THREADSIZE-calcfuncsize) * sizeof(int));
     int usedindex = 0;
-    for (k = 0;k < directionsize;k++){
+    for (int k = 0;k < directionsize;k++){
         if ((x + directions[k][0] != not_x ||
             y + directions[k][1] != not_y) &&
             x + directions[k][0] < rows &&
@@ -587,7 +539,7 @@ void* search(void *arg){
             datas[k]->color = color;
             datas[k]->ret = false;
             datas[k]->board = (int**)malloc(rows * sizeof(int*));
-            for (i = 0; i < rows; i++) {
+            for (int i = 0; i < rows; i++) {
                 datas[k]->board[i] = (int*)malloc(columns * sizeof(int));
                 memcpy(datas[k]->board[i], board[i], columns * sizeof(int));
             }
@@ -596,8 +548,8 @@ void* search(void *arg){
             result2[(2*genstep)-(2*step)+4] = y + directions[k][1];
             datas[k]->path = (int*)malloc(path_size * sizeof(int));
             memcpy(datas[k]->path, result2, path_size * sizeof(int));
-            datas[k]->returned = false;
-            datas[k]->result = -1;
+
+
 
 
             array[length-1][0] = *(int*)search((void*)datas[k]);
@@ -608,7 +560,7 @@ void* search(void *arg){
     }
     int** results = (int**)malloc(directionsize * sizeof(int*));
 
-    for(i = 0;i < length;i++){
+    for(int i = 0;i < length;i++){
         if (array[i][0] > maximum){
             maximum = array[i][0];
             result[0] = array[i][1];
@@ -627,8 +579,7 @@ void* search(void *arg){
 }
 
 int* best_place(int x, int y,int step, int lx, int ly){
-    int x_start,y_start;
-    int i,j;
+    int x_start, y_start, i, j;
     x_start = x;
     y_start = y;
 
@@ -657,9 +608,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.not_y = ly;
     data.color = 2;
     data.ret = true;
-    data.result = -1;
-    data.returned = false;
-
     int** board3 = (int**)malloc(rows * sizeof(int*));
     for (i = 0;i < rows;i++){
         board3[i] = (int*)malloc(columns * sizeof(int));
@@ -684,9 +632,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
     }
     else{
         printf("PC FRAME ERROR\n");
-        printf("PC FRAME = %d\n",pcframe);
-        printf("USER FRAME = %d\n",userframe);
-        printf("j = %d\n",j);
     }
 
     fclose(file);
@@ -694,29 +639,28 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
-    int i,j;
     ones = (int**)malloc(1 * sizeof(int*));
     board2 = (int**)malloc(rows * sizeof(int*));
-    for(i = 0;i < rows;i++){
+    for(int i = 0;i < rows;i++){
         board2[i] = (int*)malloc(columns * sizeof(int));
     }
     // make everywhere empty
-    for (i = 0;i < rows; i++){
-        for (j = 0;j < columns;j++){
+    for (int i = 0;i < rows; i++){
+        for (int j = 0;j < columns;j++){
             board2[i][j] = 0;
         }
     }
     // make checked array empty
     checked = (bool**)malloc(rows * sizeof(bool*));
-    for(i = 0;i < rows;i++){
+    for(int i = 0;i < rows;i++){
         checked[i] = (bool*)malloc(rows * sizeof(bool));
-        for (j = 0;j < rows;j++){
+        for (int j = 0;j < rows;j++){
             checked[i][j] = false;
         }
     }
 
-    for (i = 0;i < rows;i++){
-        for(j = 0;j < columns;j++){
+    for (int i = 0;i < rows;i++){
+        for(int j = 0;j < columns;j++){
             newnode[i][j] = (Node*)malloc(sizeof(Node));
             newnode[i][j]->frame = which(i,j);
         }
