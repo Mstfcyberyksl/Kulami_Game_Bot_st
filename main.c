@@ -58,9 +58,6 @@ int frames[framecount][13] = {{4,0,0,0,1,1,0,1,1,-1,-1,-1,-1},
 typedef struct {
     int color;
     int** board;
-    void* (*func)(void*);
-    int result;
-    bool returned;
 }Data2;
 
 typedef struct Node {
@@ -442,8 +439,8 @@ void* place_area_points(void *arg){
     return (void*)result;
 }
 Data2 copydata2(Data2* data){
-    Data2 copy = *data;
-
+    Data2 copy;
+    copy.color = data->color;
     copy.board = (int**)malloc(8 * sizeof(int*));
     for (int i = 0; i < 8; i++) {
         copy.board[i] = (int*)malloc(8 * sizeof(int));
@@ -451,46 +448,29 @@ Data2 copydata2(Data2* data){
     }
     return copy;
 }
-void freedata2(Data2 data){
+void freedata2(Data2* data){
     for (int i = 0; i < 8; i++) {
-        free(data.board[i]);
+        free(data->board[i]);
     }
-    free(data.board);
+    free(data->board);
 }
 
 int* calculate(int color, int** board){
-
-    pthread_t* calcthreads = (pthread_t*)malloc(calcfuncsize * sizeof(pthread_t));
     int i;
-    int** result = (int**)malloc(calcfuncsize * sizeof(int*));
-    for(i = 0;i < calcfuncsize;i++){
-        result[i] = (int*)malloc(sizeof(int));
-    }
-    int resultindex = 0;
+
     Data2* data = (Data2*)malloc(sizeof(Data2));
     data->color = color;
     data->board = (int**)malloc(8 * sizeof(int*));
-    for (int i = 0;i < 8;i++){
+    for (i = 0;i < 8;i++){
         data->board[i] = (int*)malloc(8 * sizeof(int));
         memcpy(data->board[i],board[i],8 * sizeof(int));
     }
-    int ab;
     Data2* parray = (Data2*)malloc(calcfuncsize * sizeof(Data2));
     for(i = 0;i < calcfuncsize;i++){
         parray[i] = copydata2(data);
     }
 
-    parray[0].func = horizontal_points;
-    parray[1].func = vertical_points;
-    parray[2].func = diagonal_points_45;
-    parray[3].func = diagonal_points_135;
-    parray[4].func = place_area_points;
-    parray[5].func = marble_area_points;
-    for(i = 0;i < calcfuncsize;i++){
-        parray[i].result = -1;
-        parray[i].returned = false;
-    }
-    int* sum = (int*)malloc(1 * sizeof(int));
+    int* sum = (int*)malloc(sizeof(int));
     *sum =  *(int*)horizontal_points((void*)&parray[0])  +
             *(int*)vertical_points((void*)&parray[1])    +
             *(int*)diagonal_points_45((void*)&parray[2]) +
@@ -498,17 +478,12 @@ int* calculate(int color, int** board){
             *(int*)place_area_points((void*)&parray[4])  +
             *(int*)marble_area_points((void*)&parray[5]);
 
-    //
-    /*for(i = 0;i < calcfuncsize;i++){
-        free(result[i]);
-    }
-    free(result);
-    free(calcthreads);
+    freedata2(data);
     free(data);
     for(i = 0;i < calcfuncsize;i++){
-        freedata2(parray[i]);
+        freedata2(&parray[i]);
     }
-    free(parray);*/
+    free(parray);
     return sum;
 }
 
