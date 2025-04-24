@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -415,6 +416,14 @@ void freedata2(Data2* data){
     free(data->board);
 }
 
+void freedata(Data* data){
+    for(int i = 0; i < rows; i++){
+        free(data->board[i]);
+    }
+    free(data->board);
+    free(data->path);
+}
+
 int* calculate(int color, int** board){
     Data2* data = (Data2*)malloc(sizeof(Data2));
     data->color = color;
@@ -462,21 +471,32 @@ void append(Data *data){
     fprintf(file, "\n");
 }
 void* search(void *arg){
-    int length = 0,maximum = -1,info1,info2,a,b;
     Data* data = (Data*)arg;
-    int x = data->x;
-    int y = data->y;
     int step = data->step;
-    int not_x = data->not_x;
-    int not_y = data->not_y;
-    int color = data->color;
-    bool ret = data->ret;
     int** board = (int**)malloc(rows * sizeof(int*));
-    int* result2 = (int*)malloc(path_size * sizeof(int));
     for(int i = 0;i < rows;i++){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],data->board[i],columns * sizeof(int));
     }
+    if (step == 0){
+        data->path[0] = *calculate(2,board);
+        append(data);
+        return (void*)&data->path[0];
+    }
+
+    int length = 0, info1, info2, a, b;
+
+    int* maximum = (int*)malloc(sizeof(int));
+    int x = data->x;
+    int y = data->y;
+
+    int not_x = data->not_x;
+    int not_y = data->not_y;
+    int color = data->color;
+    bool ret = data->ret;
+
+    int* result2 = (int*)malloc(path_size * sizeof(int));
+
     memcpy(result2, data->path, path_size * sizeof(int));
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
     // may improve here (memory allocation part above)
@@ -485,10 +505,9 @@ void* search(void *arg){
     }
     int** array;
     int* result;
-    int* invalid;
-    invalid = (int*)malloc(1 * sizeof(int));
+
     result = (int*)malloc(2 * sizeof(int));
-    array = (int**)malloc(1 * sizeof(int*));
+    array = (int**)malloc(sizeof(int*));
     if (not_x > -1 && not_y > -1){
         info1 = newnode[not_x][not_y]->frame;
     }else{
@@ -496,13 +515,7 @@ void* search(void *arg){
     }
     info2 = newnode[x][y]->frame;
     board[x][y] = color;
-    if (step == 0){
-        *invalid = *calculate(2,board);
-        free(result);
-        data->path[0] = *invalid;
-        append(data);
-        return (void*)invalid;
-    }
+
 
     if (color == 2){
         color = 1;
@@ -511,8 +524,7 @@ void* search(void *arg){
     }else{
         printf("COLOR ERROR %d",color);
     }
-    int* used = (int*)malloc((THREADSIZE-calcfuncsize) * sizeof(int));
-    int usedindex = 0;
+
     for (int k = 0;k < directionsize;k++){
         if ((x + directions[k][0] != not_x ||
             y + directions[k][1] != not_y) &&
@@ -525,9 +537,6 @@ void* search(void *arg){
             newnode[x + directions[k][0]][y + directions[k][1]]->frame != info2){
 
             length++;
-            used[usedindex] = k;
-            usedindex++;
-            //datas[k] = (Data*)malloc(sizeof(Data));
             board[x + directions[k][0]][y + directions[k][1]] = color;
             array = (int**)realloc(array,length * sizeof(int*));
             array[length-1] = (int*)malloc(3 * sizeof(int));
@@ -548,34 +557,41 @@ void* search(void *arg){
             result2[(2*genstep)-(2*step)+4] = y + directions[k][1];
             datas[k]->path = (int*)malloc(path_size * sizeof(int));
             memcpy(datas[k]->path, result2, path_size * sizeof(int));
-
-
-
-
             array[length-1][0] = *(int*)search((void*)datas[k]);
+            freedata(datas[k]);
+            free(datas[k]);
+
             array[length-1][1] = x + directions[k][0];
             array[length-1][2] = y + directions[k][1];
             board[x + directions[k][0]][y + directions[k][1]] = 0;
         }
     }
-    int** results = (int**)malloc(directionsize * sizeof(int*));
 
     for(int i = 0;i < length;i++){
-        if (array[i][0] > maximum){
-            maximum = array[i][0];
+        if (array[i][0] > *maximum){
+            *maximum = array[i][0];
             result[0] = array[i][1];
             result[1] = array[i][2];
-            //free(array[i]);
+            free(array[i]);
         }
     }
-    //free(array);
+    free(array);
+    for(int i = 0; i < rows; i++){
+        free(board[i]);
+    }
+    free(board);
+    free(result2);
+    free(datas);
+
+    //freedata(data);
+    //free(data);
+
+
 
     if (ret){
         return (void*)result;
     }
-
-    *invalid = maximum;
-    return (void*)invalid;
+    return (void*)maximum;
 }
 
 int* best_place(int x, int y,int step, int lx, int ly){
@@ -639,7 +655,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
-    ones = (int**)malloc(1 * sizeof(int*));
+    ones = (int**)malloc(sizeof(int*));
     board2 = (int**)malloc(rows * sizeof(int*));
     for(int i = 0;i < rows;i++){
         board2[i] = (int*)malloc(columns * sizeof(int));
