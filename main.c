@@ -473,16 +473,18 @@ int which(int x, int y){
     return -1;
 }
 void append(Data *data){
+    file = fopen("data.txt","a");
     for(int i = 0;i < path_size;i++){
         fprintf(file,"%d,",data->path[i]);
     }
     fprintf(file, "\n");
+    fclose(file);
 }
 void* search(void *arg){
     Data* data = (Data*)arg;
     if (data->step == 0){
         data->path[0] = *calculate(2,data->board);
-        append(data);
+        //append(data);
         return (void*)&data->path[0];
     }
 
@@ -596,7 +598,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
         return temp;
     }
 
-    file = fopen("data.txt","a");
+    
     int* temp;
     Data data;
     data.x = x;
@@ -632,7 +634,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
         printf("PC FRAME ERROR\n");
     }
 
-    fclose(file);
     return temp;
 }
 
