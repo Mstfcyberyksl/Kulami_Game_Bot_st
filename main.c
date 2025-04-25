@@ -6,7 +6,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define THREADSIZE 13
 #define calcfuncsize 6
 #define rows 8
 #define columns 8
@@ -436,21 +435,30 @@ int* calculate(int color, int** board){
     for(int i = 0;i < calcfuncsize;i++){
         parray[i] = copydata2(data);
     }
-
+    int** temp;
+    temp = (int**)malloc(calcfuncsize * sizeof(int*));
+    for(int i = 0;i < calcfuncsize; i++){
+        temp[i] = (int*)malloc(sizeof(int));
+    }
+    temp[0] = horizontal_points((void*)&parray[0]);
+    temp[1] = vertical_points((void*)&parray[1]);
+    temp[2] = diagonal_points_45((void*)&parray[2]);
+    temp[3] = diagonal_points_135((void*)&parray[3]);
+    temp[4] = place_area_points((void*)&parray[4]);
+    temp[5] = marble_area_points((void*)&parray[5]);
     int* sum = (int*)malloc(sizeof(int));
-    *sum =  *(int*)horizontal_points((void*)&parray[0])  +
-            *(int*)vertical_points((void*)&parray[1])    +
-            *(int*)diagonal_points_45((void*)&parray[2]) +
-            *(int*)diagonal_points_135((void*)&parray[3])+
-            *(int*)place_area_points((void*)&parray[4])  +
-            *(int*)marble_area_points((void*)&parray[5]);
-
-    freedata2(data);
-    free(data);
-    for(int i = 0;i < calcfuncsize;i++){
+    *sum = *(int*)temp[0] + *(int*)temp[1] + *(int*)temp[2] + *(int*)temp[3] + *(int*)temp[4] + *(int*)temp[5];
+    for(int i = 0;i < calcfuncsize; i++){
         freedata2(&parray[i]);
+        //free(&parray[i]);
+        free(temp[i]);
     }
     free(parray);
+    free(temp);
+    freedata2(data);
+    free(data);
+
+
     return sum;
 }
 
@@ -472,98 +480,76 @@ void append(Data *data){
 }
 void* search(void *arg){
     Data* data = (Data*)arg;
-    int step = data->step;
-    int** board = (int**)malloc(rows * sizeof(int*));
-    for(int i = 0;i < rows;i++){
-        board[i] = (int*)malloc(columns * sizeof(int));
-        memcpy(board[i],data->board[i],columns * sizeof(int));
-    }
-    if (step == 0){
-        data->path[0] = *calculate(2,board);
+    if (data->step == 0){
+        data->path[0] = *calculate(2,data->board);
         append(data);
         return (void*)&data->path[0];
     }
 
     int length = 0, info1, info2, a, b;
-
     int* maximum = (int*)malloc(sizeof(int));
-    int x = data->x;
-    int y = data->y;
-
-    int not_x = data->not_x;
-    int not_y = data->not_y;
-    int color = data->color;
-    bool ret = data->ret;
-
-    int* result2 = (int*)malloc(path_size * sizeof(int));
-
-    memcpy(result2, data->path, path_size * sizeof(int));
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
-    // may improve here (memory allocation part above)
-    for (int i= 0;i < directionsize;i++){
-        datas[i] = (Data*)malloc(sizeof(Data));
-    }
     int** array;
     int* result;
 
     result = (int*)malloc(2 * sizeof(int));
     array = (int**)malloc(sizeof(int*));
-    if (not_x > -1 && not_y > -1){
-        info1 = newnode[not_x][not_y]->frame;
+    if (data->not_x > -1 && data->not_y > -1){
+        info1 = newnode[data->not_x][data->not_y]->frame;
     }else{
         info1 = -1;
     }
-    info2 = newnode[x][y]->frame;
-    board[x][y] = color;
+    info2 = newnode[data->x][data->y]->frame;
+    data->board[data->x][data->y] = data->color;
 
-
-    if (color == 2){
-        color = 1;
-    }else if (color == 1){
-        color = 2;
+    if (data->color == 2){
+        data->color = 1;
+    }else if (data->color == 1){
+        data->color = 2;
     }else{
-        printf("COLOR ERROR %d",color);
+        printf("COLOR ERROR %d",data->color);
     }
 
     for (int k = 0;k < directionsize;k++){
-        if ((x + directions[k][0] != not_x ||
-            y + directions[k][1] != not_y) &&
-            x + directions[k][0] < rows &&
-            x + directions[k][0] > -1 &&
-            y + directions[k][1] < columns &&
-            y + directions[k][1] > -1 &&
-            board[x + directions[k][0]][y + directions[k][1]] == 0 &&
-            newnode[x + directions[k][0]][y + directions[k][1]]->frame != info1 &&
-            newnode[x + directions[k][0]][y + directions[k][1]]->frame != info2){
+        if ((data->x + directions[k][0] != data->not_x ||
+            data->y + directions[k][1] != data->not_y) &&
+            data->x + directions[k][0] < rows &&
+            data->x + directions[k][0] > -1 &&
+            data->y + directions[k][1] < columns &&
+            data->y + directions[k][1] > -1 &&
+            data->board[data->x + directions[k][0]][data->y + directions[k][1]] == 0 &&
+            newnode[data->x + directions[k][0]][data->y + directions[k][1]]->frame != info1 &&
+            newnode[data->x + directions[k][0]][data->y + directions[k][1]]->frame != info2){
 
             length++;
-            board[x + directions[k][0]][y + directions[k][1]] = color;
+            data->board[data->x + directions[k][0]][data->y + directions[k][1]] = data->color;
             array = (int**)realloc(array,length * sizeof(int*));
             array[length-1] = (int*)malloc(3 * sizeof(int));
-            datas[k]->x = x + directions[k][0];
-            datas[k]->y = y + directions[k][1];
-            datas[k]->step = step - 1;
-            datas[k]->not_x = x;
-            datas[k]->not_y = y;
-            datas[k]->color = color;
+            datas[k] = (Data*)malloc(sizeof(Data));
+            datas[k]->x = data->x + directions[k][0];
+            datas[k]->y = data->y + directions[k][1];
+            datas[k]->step = data->step - 1;
+            datas[k]->not_x = data->x;
+            datas[k]->not_y = data->y;
+            datas[k]->color = data->color;
             datas[k]->ret = false;
             datas[k]->board = (int**)malloc(rows * sizeof(int*));
             for (int i = 0; i < rows; i++) {
                 datas[k]->board[i] = (int*)malloc(columns * sizeof(int));
-                memcpy(datas[k]->board[i], board[i], columns * sizeof(int));
+                memcpy(datas[k]->board[i], data->board[i], columns * sizeof(int));
             }
 
-            result2[(2*genstep)-(2*step)+3] = x + directions[k][0];
-            result2[(2*genstep)-(2*step)+4] = y + directions[k][1];
+            data->path[(2*genstep)-(2*data->step)+3] = data->x + directions[k][0];
+            data->path[(2*genstep)-(2*data->step)+4] = data->y + directions[k][1];
             datas[k]->path = (int*)malloc(path_size * sizeof(int));
-            memcpy(datas[k]->path, result2, path_size * sizeof(int));
+            memcpy(datas[k]->path, data->path, path_size * sizeof(int));
             array[length-1][0] = *(int*)search((void*)datas[k]);
-            freedata(datas[k]);
+            //freedata(datas[k]);
             free(datas[k]);
 
-            array[length-1][1] = x + directions[k][0];
-            array[length-1][2] = y + directions[k][1];
-            board[x + directions[k][0]][y + directions[k][1]] = 0;
+            array[length-1][1] = data->x + directions[k][0];
+            array[length-1][2] = data->y + directions[k][1];
+            data->board[data->x + directions[k][0]][data->y + directions[k][1]] = 0;
         }
     }
 
@@ -572,23 +558,22 @@ void* search(void *arg){
             *maximum = array[i][0];
             result[0] = array[i][1];
             result[1] = array[i][2];
-            free(array[i]);
+
         }
+        free(array[i]);
     }
     free(array);
     for(int i = 0; i < rows; i++){
-        free(board[i]);
+        free(data->board[i]);
     }
-    free(board);
-    free(result2);
+    free(data->board);
+    free(data->path);
     free(datas);
 
     //freedata(data);
     //free(data);
 
-
-
-    if (ret){
+    if (data->ret){
         return (void*)result;
     }
     return (void*)maximum;
