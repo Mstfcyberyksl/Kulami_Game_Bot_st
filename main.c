@@ -580,10 +580,7 @@ void* search(void *arg){
 }
 
 int* best_place(int x, int y,int step, int lx, int ly){
-    int x_start, y_start, i, j;
-    x_start = x;
-    y_start = y;
-
+    int i, j;
     board2[x][y] = 1;
 
     genstep = step;
@@ -609,13 +606,13 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.not_y = ly;
     data.color = 2;
     data.ret = true;
-    int** board3 = (int**)malloc(rows * sizeof(int*));
+    int** board = (int**)malloc(rows * sizeof(int*));
     for (i = 0;i < rows;i++){
-        board3[i] = (int*)malloc(columns * sizeof(int));
-        memcpy(board3[i],board2[i], columns * sizeof(int));
+        board[i] = (int*)malloc(columns * sizeof(int));
+        memcpy(board[i],board2[i], columns * sizeof(int));
     }
 
-    data.board = board3;
+    data.board = board;
     data.path = (int*)malloc(path_size * sizeof(int));
     for (i = 3;i < path_size;i++){
         data.path[i] = -1;
