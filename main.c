@@ -127,6 +127,7 @@ void* horizontal_points(void *arg){
     *result = pc - user;
     for (int i = 0;i < rows;i++){
         free(board[i]);
+
     }
     free(board);
     return (void*)result;
@@ -398,13 +399,14 @@ void* place_area_points(void *arg){
     free(board);
     return (void*)result;
 }
-Data2 copydata2(Data2* data){
-    Data2 copy;
-    copy.color = data->color;
-    copy.board = (int**)malloc(rows * sizeof(int*));
+Data2* copydata2(Data2* data){
+    Data2* copy;
+    copy = (Data2*)malloc(sizeof(Data2));
+    copy->color = data->color;
+    copy->board = (int**)malloc(rows * sizeof(int*));
     for (int i = 0; i < rows; i++) {
-        copy.board[i] = (int*)malloc(columns * sizeof(int));
-        memcpy(copy.board[i], data->board[i], columns * sizeof(int));
+        copy->board[i] = (int*)malloc(columns * sizeof(int));
+        memcpy(copy->board[i], data->board[i], columns * sizeof(int));
     }
     return copy;
 }
@@ -431,7 +433,7 @@ int* calculate(int color, int** board){
         data->board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(data->board[i],board[i],columns * sizeof(int));
     }
-    Data2* parray = (Data2*)malloc(calcfuncsize * sizeof(Data2));
+    Data2** parray = (Data2**)malloc(calcfuncsize * sizeof(Data2*));
     for(int i = 0;i < calcfuncsize;i++){
         parray[i] = copydata2(data);
     }
@@ -440,17 +442,17 @@ int* calculate(int color, int** board){
     for(int i = 0;i < calcfuncsize; i++){
         temp[i] = (int*)malloc(sizeof(int));
     }
-    temp[0] = horizontal_points((void*)&parray[0]);
-    temp[1] = vertical_points((void*)&parray[1]);
-    temp[2] = diagonal_points_45((void*)&parray[2]);
-    temp[3] = diagonal_points_135((void*)&parray[3]);
-    temp[4] = place_area_points((void*)&parray[4]);
-    temp[5] = marble_area_points((void*)&parray[5]);
+    temp[0] = horizontal_points((void*)parray[0]);
+    temp[1] = vertical_points((void*)parray[1]);
+    temp[2] = diagonal_points_45((void*)parray[2]);
+    temp[3] = diagonal_points_135((void*)parray[3]);
+    temp[4] = place_area_points((void*)parray[4]);
+    temp[5] = marble_area_points((void*)parray[5]);
     int* sum = (int*)malloc(sizeof(int));
     *sum = *(int*)temp[0] + *(int*)temp[1] + *(int*)temp[2] + *(int*)temp[3] + *(int*)temp[4] + *(int*)temp[5];
     for(int i = 0;i < calcfuncsize; i++){
-        freedata2(&parray[i]);
-        //free(&parray[i]);
+        freedata2(parray[i]);
+        free(parray[i]);
         free(temp[i]);
     }
     free(parray);
@@ -473,12 +475,12 @@ int which(int x, int y){
     return -1;
 }
 void append(Data *data){
-    file = fopen("data.txt","a");
+    /*file = fopen("data.txt","a");
     for(int i = 0;i < path_size;i++){
         fprintf(file,"%d,",data->path[i]);
     }
     fprintf(file, "\n");
-    fclose(file);
+    fclose(file);*/
 }
 void* search(void *arg){
     Data* data = (Data*)arg;
