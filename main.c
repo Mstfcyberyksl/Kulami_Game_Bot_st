@@ -71,6 +71,21 @@ typedef struct {
     int* path;
 }Data;
 
+void freedata2(Data2* data){
+    for (int i = 0; i < rows; i++) {
+        free(data->board[i]);
+    }
+    free(data->board);
+}
+
+void freedata(Data* data){
+    for(int i = 0; i < rows; i++){
+        free(data->board[i]);
+    }
+    free(data->board);
+    free(data->path);
+}
+
 void print_board(int** board){
     for(int i = 0;i < rows;i++){
         for(int j = 0;j < columns;j++){
@@ -130,6 +145,7 @@ void* horizontal_points(void *arg){
 
     }
     free(board);
+    //free(data); // HERE
     return (void*)result;
 }
 void* vertical_points(void *arg){
@@ -183,6 +199,7 @@ void* vertical_points(void *arg){
         free(board[i]);
     }
     free(board);
+    //free(data); // HERE
     return (void*)result;
 }
 void* diagonal_points_45(void *arg){
@@ -244,6 +261,7 @@ void* diagonal_points_45(void *arg){
         free(board[i]);
     }
     free(board);
+    //free(data); // HERE
     return (void*)result;
 }
 void* diagonal_points_135(void *arg){
@@ -306,6 +324,7 @@ void* diagonal_points_135(void *arg){
         free(board[i]);
     }
     free(board);
+    //free(data); // HERE
     return (void*)result;
 }
 int dfs(int i,int j,int** board,int color){
@@ -355,6 +374,8 @@ void* marble_area_points(void *arg){
         free(board[i]);
     }
     free(board);
+    //free(data); // HERE
+    
     return (void*)result;
 }
 void* place_area_points(void *arg){
@@ -397,6 +418,7 @@ void* place_area_points(void *arg){
         free(board[i]);
     }
     free(board);
+    //free(data); // HERE
     return (void*)result;
 }
 Data2* copydata2(Data2* data){
@@ -410,20 +432,7 @@ Data2* copydata2(Data2* data){
     }
     return copy;
 }
-void freedata2(Data2* data){
-    for (int i = 0; i < rows; i++) {
-        free(data->board[i]);
-    }
-    free(data->board);
-}
 
-void freedata(Data* data){
-    for(int i = 0; i < rows; i++){
-        free(data->board[i]);
-    }
-    free(data->board);
-    free(data->path);
-}
 
 int* calculate(int color, int** board){
     Data2* data = (Data2*)malloc(sizeof(Data2));
@@ -439,9 +448,7 @@ int* calculate(int color, int** board){
     }
     int** temp;
     temp = (int**)malloc(calcfuncsize * sizeof(int*));
-    for(int i = 0;i < calcfuncsize; i++){
-        temp[i] = (int*)malloc(sizeof(int));
-    }
+    
     temp[0] = horizontal_points((void*)parray[0]);
     temp[1] = vertical_points((void*)parray[1]);
     temp[2] = diagonal_points_45((void*)parray[2]);
@@ -485,13 +492,15 @@ void append(Data *data){
 void* search(void *arg){
     Data* data = (Data*)arg;
     if (data->step == 0){
-        data->path[0] = *calculate(2,data->board);
-        //append(data);
-        return (void*)&data->path[0];
+        int* result = (int*)calculate(2,data->board);
+        data->path[0] = *result; // HERE        
+        
+        return (void*)result;
     }
 
     int length = 0, info1, info2, a, b;
     int* maximum = (int*)malloc(sizeof(int));
+    *maximum = -1000000;
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
     int** array;
     int* result;
@@ -526,6 +535,7 @@ void* search(void *arg){
             newnode[data->x + directions[k][0]][data->y + directions[k][1]]->frame != info2){
 
             length++;
+            printf("LENGTH: %d\n",length);
             data->board[data->x + directions[k][0]][data->y + directions[k][1]] = data->color;
             array = (int**)realloc(array,length * sizeof(int*));
             array[length-1] = (int*)malloc(3 * sizeof(int));
@@ -547,8 +557,13 @@ void* search(void *arg){
             data->path[(2*genstep)-(2*data->step)+4] = data->y + directions[k][1];
             datas[k]->path = (int*)malloc(path_size * sizeof(int));
             memcpy(datas[k]->path, data->path, path_size * sizeof(int));
-            array[length-1][0] = *(int*)search((void*)datas[k]);
-            //freedata(datas[k]);
+            int* temppp = (int*)malloc(sizeof(int));
+            temppp = search((void*)datas[k]);
+            
+            array[length-1][0] = *temppp;
+            free(temppp); // HERE
+            
+            freedata(datas[k]);
             free(datas[k]);
 
             array[length-1][1] = data->x + directions[k][0];
@@ -562,29 +577,26 @@ void* search(void *arg){
             *maximum = array[i][0];
             result[0] = array[i][1];
             result[1] = array[i][2];
-
         }
         free(array[i]);
     }
     free(array);
-    for(int i = 0; i < rows; i++){
-        free(data->board[i]);
-    }
-    free(data->board);
-    free(data->path);
     free(datas);
-
-    //freedata(data);
-    //free(data);
-
+    
+    
     if (data->ret){
+        //freedata(data);
+        //free(data);
         return (void*)result;
     }
+    free(result); // HERE
+    
     return (void*)maximum;
 }
 
 int* best_place(int x, int y,int step, int lx, int ly){
     int i, j;
+    printf("X: %d Y: %d\n",x,y);
     board2[x][y] = 1;
 
     genstep = step;
@@ -600,7 +612,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
         return temp;
     }
 
-    
+    printf("X: %d Y: %d\n",x,y);
     int* temp;
     Data data;
     data.x = x;
@@ -615,8 +627,9 @@ int* best_place(int x, int y,int step, int lx, int ly){
         board[i] = (int*)malloc(columns * sizeof(int));
         memcpy(board[i],board2[i], columns * sizeof(int));
     }
-
+    
     data.board = board;
+    //free(board); // HERE
     data.path = (int*)malloc(path_size * sizeof(int));
     for (i = 3;i < path_size;i++){
         data.path[i] = -1;
@@ -624,10 +637,22 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.path[0] = -1;
     data.path[1] = x;
     data.path[2] = y;
-
+    printf("X: %d Y: %d\n",x,y);
+    file = fopen("data.txt","a");
+    for(int i = 0;i < rows;i++){
+        for(int j = 0;j < columns;j++){
+            fprintf(file,"%d ",board2[i][j]);
+        }
+    }
+    fprintf(file, "---> ");
+    
     temp = (int*)search((void*)&data);
+    fprintf(file,"(%d,%d)\n",temp[0],temp[1]);
+    fclose(file);
+    printf("X: %d Y: %d\n",x,y);
+    printf("X: %d Y: %d\n",temp[0],temp[1]);
     board2[temp[0]][temp[1]] = 2;
-
+    
     j = newnode[temp[0]][temp[1]]->frame;
     if (j != userframe && j != pcframe){
         pcframe = j;
