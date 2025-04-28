@@ -24,7 +24,6 @@ int marble_result,oneslen = 0;
 
 int** ones;
 
-bool** checked;
 
 int directions[directionsize][2] = {
     {0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6}, {0, 7},
@@ -658,8 +657,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
-    
-    ones = (int**)malloc(sizeof(int*));
     board2 = (int**)malloc(rows * sizeof(int*));
     for(int i = 0;i < rows;i++){
         board2[i] = (int*)malloc(columns * sizeof(int));
@@ -670,14 +667,7 @@ int main(){
             board2[i][j] = 0;
         }
     }
-    // make checked array empty
-    checked = (bool**)malloc(rows * sizeof(bool*));
-    for(int i = 0;i < rows;i++){
-        checked[i] = (bool*)malloc(rows * sizeof(bool));
-        for (int j = 0;j < rows;j++){
-            checked[i][j] = false;
-        }
-    }
+    ones = (int**)malloc(sizeof(int*));
 
     for (int i = 0;i < rows;i++){
         for(int j = 0;j < columns;j++){
@@ -685,5 +675,34 @@ int main(){
             newnode[i][j]->frame = which(i,j);
         }
     }
-    return 0;
+    int mode;
+    printf("Enter the mode: ");
+    scanf("%d",&mode);
+    printf("\n");
+    if (mode == 1){
+        return 0;
+    }else if (mode == 2){
+        printf("Enter the board coordinates: \n");
+        for(int i = 0;i < rows;i++){
+            for(int j = 0;j < columns;j++){
+                scanf("%d",&board2[i][j]);
+                printf(", ");
+            }
+            printf("\n");
+        }
+        int x,y,step,lx,ly;
+        printf("enter x : ");
+        scanf("%d",&x);
+        printf("enter y : ");
+        scanf("%d",&y);
+        printf("enter step : ");
+        scanf("%d",&step);
+        printf("enter lx : ");
+        scanf("%d",&lx);
+        printf("enter ly : ");
+        scanf("%d",&ly);
+        best_place(x,y,step,lx,ly);
+        return 0;
+    }
+    
 }
