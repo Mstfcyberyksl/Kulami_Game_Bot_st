@@ -68,7 +68,6 @@ typedef struct {
     int color;
     bool ret;
     int** board;
-    int* path;
 }Data;
 
 void freedata2(Data2* data){
@@ -83,7 +82,6 @@ void freedata(Data* data){
         free(data->board[i]);
     }
     free(data->board);
-    free(data->path);
 }
 
 void print_board(int** board){
@@ -492,8 +490,8 @@ void append(Data *data){
 void* search(void *arg){
     Data* data = (Data*)arg;
     if (data->step == 0){
-        int* result = (int*)calculate(2,data->board);
-        data->path[0] = *result; // HERE        
+        int* result = (int*)calculate(2,data->board); // HERE burayı bi tempe at tempi resulta at tempi freele
+              
         
         return (void*)result;
     }
@@ -535,7 +533,7 @@ void* search(void *arg){
             newnode[data->x + directions[k][0]][data->y + directions[k][1]]->frame != info2){
 
             length++;
-            printf("LENGTH: %d\n",length);
+            
             data->board[data->x + directions[k][0]][data->y + directions[k][1]] = data->color;
             array = (int**)realloc(array,length * sizeof(int*));
             array[length-1] = (int*)malloc(3 * sizeof(int));
@@ -553,10 +551,7 @@ void* search(void *arg){
                 memcpy(datas[k]->board[i], data->board[i], columns * sizeof(int));
             }
 
-            data->path[(2*genstep)-(2*data->step)+3] = data->x + directions[k][0];
-            data->path[(2*genstep)-(2*data->step)+4] = data->y + directions[k][1];
-            datas[k]->path = (int*)malloc(path_size * sizeof(int));
-            memcpy(datas[k]->path, data->path, path_size * sizeof(int));
+            
             int* temppp = (int*)malloc(sizeof(int));
             temppp = search((void*)datas[k]);
             
@@ -629,14 +624,8 @@ int* best_place(int x, int y,int step, int lx, int ly){
     }
     
     data.board = board;
-    //free(board); // HERE
-    data.path = (int*)malloc(path_size * sizeof(int));
-    for (i = 3;i < path_size;i++){
-        data.path[i] = -1;
-    }
-    data.path[0] = -1;
-    data.path[1] = x;
-    data.path[2] = y;
+    
+    
     printf("X: %d Y: %d\n",x,y);
     file = fopen("data.txt","a");
     for(int i = 0;i < rows;i++){
@@ -665,6 +654,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
+    
     ones = (int**)malloc(sizeof(int*));
     board2 = (int**)malloc(rows * sizeof(int*));
     for(int i = 0;i < rows;i++){
