@@ -755,6 +755,8 @@ int main(){
                 printf("File not found\n");
                 return 0;
             }
+            int times;
+            fscanf(inputfile,"%d",&times);
             for(int j = 0;j < rows;j++){
                 for(int k = 0;k < columns;k++){
                     fscanf(inputfile,"%d",&board2[j][k]);
