@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 #define calcfuncsize 6
 #define rows 8
@@ -18,7 +19,9 @@ int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1;
 
 int** board2;
-FILE* file ;
+FILE* file;
+FILE* inputfile;
+FILE* outputfile;
 
 int marble_result,oneslen = 0;
 
@@ -554,7 +557,7 @@ void* search(void *arg){
             }
 
             
-            int* temppp = (int*)malloc(sizeof(int));
+            int* temppp;
             temppp = search((void*)datas[k]);
             
             array[length-1][0] = *temppp;
@@ -682,27 +685,40 @@ int main(){
     if (mode == 1){
         return 0;
     }else if (mode == 2){
-        printf("Enter the board coordinates: \n");
-        for(int i = 0;i < rows;i++){
-            for(int j = 0;j < columns;j++){
-                scanf("%d",&board2[i][j]);
-                printf(", ");
-            }
-            printf("\n");
+        inputfile = fopen("input.txt","r");
+        if (inputfile == NULL){
+            printf("File not found\n");
+            return 0;
         }
-        int x,y,step,lx,ly;
-        printf("enter x : ");
-        scanf("%d",&x);
-        printf("enter y : ");
-        scanf("%d",&y);
-        printf("enter step : ");
-        scanf("%d",&step);
-        printf("enter lx : ");
-        scanf("%d",&lx);
-        printf("enter ly : ");
-        scanf("%d",&ly);
-        best_place(x,y,step,lx,ly);
+        int times;
+        fscanf(inputfile,"%d",&times);
+        for(int i = 0;i < times;i++){
+            clock_t start = clock();
+            
+            for(int j = 0;j < rows;j++){
+                for(int k = 0;k < columns;k++){
+                    fscanf(inputfile,"%d",&board2[j][k]);
+                }
+            }
+            int x,y,step,lx,ly;
+            fscanf(inputfile,"%d",&x);
+            fscanf(inputfile,"%d",&y);
+            fscanf(inputfile,"%d",&step);
+            fscanf(inputfile,"%d",&lx);
+            fscanf(inputfile,"%d",&ly);
+            
+            best_place(x,y,step,lx,ly);
+            clock_t end = clock();
+            double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+            outputfile = fopen("output.txt","a");
+            fprintf(file,"Time: %f\n",time_spent);
+            fclose(outputfile);
+        }
+        fclose(inputfile);
+        
+        
+        
+        
         return 0;
-    }
-    
+    }// ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
 }
