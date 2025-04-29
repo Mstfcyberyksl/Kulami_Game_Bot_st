@@ -22,6 +22,7 @@ int** board2;
 FILE* file;
 FILE* inputfile;
 FILE* outputfile;
+FILE* savefile;
 
 int marble_result,oneslen = 0;
 
@@ -492,6 +493,36 @@ void append(Data *data){
     fprintf(file, "\n");
     fclose(file);*/
 }
+int* findvalid(Data* data){
+    int info1, info2, length = 0;
+    int* result = (int*)malloc(2 * directionsize * sizeof(int));
+    if (data->data1[3] > -1 && data->data1[4] > -1){
+        info1 = newnode[data->data1[3]][data->data1[4]]->frame;
+    }else{
+        info1 = -1;
+    }
+    info2 = newnode[data->data1[0]][data->data1[1]]->frame; 
+    for (int k = 0;k < directionsize;k++){
+        if ((data->data1[0] + directions[k][0] != data->data1[3] ||
+            data->data1[1] + directions[k][1] != data->data1[4]) &&
+            data->data1[0] + directions[k][0] < rows &&
+            data->data1[0] + directions[k][0] > -1 &&
+            data->data1[1] + directions[k][1] < columns &&
+            data->data1[1] + directions[k][1] > -1 &&
+            data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] == 0 &&
+            newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
+            newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2){
+                result[2 * length] = data->data1[0] + directions[k][0];
+                result[2 * length + 1] = data->data1[1] + directions[k][1];
+                length++;
+        }
+    }
+    for(int k = length;k < directionsize;k++){
+        result[2 * k] = -1;
+        result[2 * k + 1] = -1;
+    }
+    return result;
+}
 void* search(void *arg){
     Data* data = (Data*)arg;
     if (data->data1[2] == 0){
@@ -685,36 +716,90 @@ int main(){
     if (mode == 1){
         return 0;
     }else if (mode == 2){
-        inputfile = fopen("input.txt","r");
-        if (inputfile == NULL){
-            printf("File not found\n");
-            return 0;
-        }
-        int times;
-        fscanf(inputfile,"%d",&times);
-        for(int i = 0;i < times;i++){
-            clock_t start = clock();
-            
+        printf("Enter mode again: ");
+        scanf("%d",&mode);
+        if (mode == 1){
+            inputfile = fopen("input.txt","r");
+            if (inputfile == NULL){
+                printf("File not found\n");
+                return 0;
+            }
+            int times;
+            fscanf(inputfile,"%d",&times);
+            for(int i = 0;i < times;i++){
+                clock_t start = clock();
+                
+                for(int j = 0;j < rows;j++){
+                    for(int k = 0;k < columns;k++){
+                        fscanf(inputfile,"%d",&board2[j][k]);
+                    }
+                }
+                int x,y,step,lx,ly;
+                fscanf(inputfile,"%d",&x);
+                fscanf(inputfile,"%d",&y);
+                fscanf(inputfile,"%d",&step);
+                fscanf(inputfile,"%d",&lx);
+                fscanf(inputfile,"%d",&ly);
+                
+                best_place(x,y,step,lx,ly);
+                clock_t end = clock();
+                double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+                outputfile = fopen("output.txt","a");
+                fprintf(file,"Time: %f\n",time_spent);
+                fclose(outputfile);
+            }
+            fclose(inputfile);
+        }else if (mode == 2){
+            inputfile = fopen("input.txt","r");
+            if (inputfile == NULL){
+                printf("File not found\n");
+                return 0;
+            }
             for(int j = 0;j < rows;j++){
                 for(int k = 0;k < columns;k++){
                     fscanf(inputfile,"%d",&board2[j][k]);
                 }
             }
-            int x,y,step,lx,ly;
+            int x,y,step,lx,ly,depth;
+            int *temp, *valids;
             fscanf(inputfile,"%d",&x);
             fscanf(inputfile,"%d",&y);
             fscanf(inputfile,"%d",&step);
             fscanf(inputfile,"%d",&lx);
             fscanf(inputfile,"%d",&ly);
-            
-            best_place(x,y,step,lx,ly);
-            clock_t end = clock();
-            double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-            outputfile = fopen("output.txt","a");
-            fprintf(file,"Time: %f\n",time_spent);
-            fclose(outputfile);
+            printf("Enter depth: ");
+            scanf("%d",&depth);
+            for(int b = 0; b < depth; b++){
+                temp = best_place(x,y,step,lx,ly);
+                Data data;
+                data.data1 = (int*)malloc(data_length * sizeof(int));
+                data.data1[0] = temp[0];
+                data.data1[1] = temp[1];
+                data.data1[2] = step;
+                data.data1[3] = x;
+                data.data1[4] = y;
+                data.data1[5] = 2;
+                
+                valids = findvalid(&data);
+                savefile = fopen("save.txt","a");
+                for(int i = 0;i < 2 * directionsize;i++){
+                    fprintf(savefile,"%d ",valids[i]);
+                }
+                fprintf(savefile,"\n");
+                for(int i = 0;i < rows;i++){
+                    for(int j = 0;j < columns;j++){
+                        fprintf(savefile,"%d ",board2[i][j]);
+                    }
+                }
+                fprintf(savefile,"\n");
+                fclose(savefile);
+                x = valids[0];
+                y = valids[1];
+                lx = temp[0];
+                ly = temp[1];
+                
+            }
         }
-        fclose(inputfile);
         
         
         
