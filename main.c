@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <arpa/inet.h>
 
 #define calcfuncsize 6
 #define rows 8
@@ -13,16 +14,17 @@
 #define directionsize 28
 #define framecount 17
 #define data_length 6
-
+#define PORT 9000
 
 int area = 0, userframe = -1, pcframe = -1;
-int genstep = -1;
+int genstep = -1, validlength = -1;
 
 int** board2;
 FILE* file;
 FILE* inputfile;
 FILE* outputfile;
 FILE* savefile;
+FILE* general_data_file;
 
 int marble_result,oneslen = 0;
 
@@ -496,6 +498,7 @@ void append(Data *data){
 int* findvalid(Data* data){
     int info1, info2, length = 0;
     int* result = (int*)malloc(2 * directionsize * sizeof(int));
+    printf("BEFORE INFO!-1\n");
     if (data->data1[3] > -1 && data->data1[4] > -1){
         info1 = newnode[data->data1[3]][data->data1[4]]->frame;
     }else{
@@ -517,27 +520,75 @@ int* findvalid(Data* data){
                 length++;
         }
     }
+    validlength = length-1;
+    printf("FINITO\n");
     for(int k = length;k < directionsize;k++){
         result[2 * k] = -1;
         result[2 * k + 1] = -1;
     }
     return result;
 }
+
+bool check_done_my(int** board,int x, int y){
+    int** copy = (int**)malloc(rows * sizeof(int*));
+    for(int i = 0;i < rows;i++){
+        copy[i] = (int*)malloc(columns * sizeof(int));
+        memcpy(copy[i],board[i],columns * sizeof(int));
+    }
+    copy[x][y] = 1;
+    
+    int client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        perror("Socket creation failed");
+        return 1;
+    }
+
+    struct sockaddr_in server_address;
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(PORT);
+    server_address.sin_addr.s_addr = inet_addr("192.168.1.156");
+
+    
+    if (connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+        perror("Connection failed");
+        close(client_fd);
+        return 1;
+    }
+
+    printf("Connected to server\n");
+
+    send(client_fd, *copy, rows * columns * sizeof(int), 0);
+    printf("Board sent to server\n");
+
+    bool result;
+    recv(client_fd, &result, sizeof(result), 0);
+    printf("Server response: %d\n", result);
+
+    
+    close(client_fd);
+    for(int i = 0;i < rows;i++){
+        free(copy[i]);
+    }
+    free(copy);
+    return result;
+}
 void* search(void *arg){
     Data* data = (Data*)arg;
     if (data->data1[2] == 0){
-        int* result = (int*)calculate(2,data->board); // HERE burayı bi tempe at tempi resulta at tempi freele
+        int* result = (int*)calculate(2,data->board);
         return (void*)result;
     }
 
     int length = 0, info1, info2, a, b;
     int* maximum = (int*)malloc(sizeof(int));
-    *maximum = -1000000;
+    
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
     int** array;
     int* result;
 
     result = (int*)malloc(2 * sizeof(int));
+    result[0] = -1;
+    result[1] = -1;
     array = (int**)malloc(sizeof(int*));
     if (data->data1[3] > -1 && data->data1[4] > -1){
         info1 = newnode[data->data1[3]][data->data1[4]]->frame;
@@ -592,7 +643,7 @@ void* search(void *arg){
             temppp = search((void*)datas[k]);
             
             array[length-1][0] = *temppp;
-            free(temppp); // HERE
+            free(temppp);
             
             freedata(datas[k]);
             free(datas[k]);
@@ -603,24 +654,35 @@ void* search(void *arg){
         }
     }
 
-    for(int i = 0;i < length;i++){
-        if (array[i][0] > *maximum){
-            *maximum = array[i][0];
-            result[0] = array[i][1];
-            result[1] = array[i][2];
+    if (data->data1[2] % 2 == 1){
+        *maximum = -1000000;
+        for(int i = 0;i < length;i++){
+            if (array[i][0] > *maximum){
+                *maximum = array[i][0];
+                result[0] = array[i][1];
+                result[1] = array[i][2];
+            }
+            free(array[i]);
         }
-        free(array[i]);
+    }else{
+        *maximum = 1000000;
+        for(int i = 0;i < length;i++){
+            if (array[i][0] < *maximum){
+                *maximum = array[i][0];
+                result[0] = array[i][1];
+                result[1] = array[i][2];
+            }
+            free(array[i]);
+        }
     }
     free(array);
     free(datas);
     
-    
     if (data->ret){
-        //freedata(data);
-        //free(data);
+        
         return (void*)result;
     }
-    free(result); // HERE
+    free(result);
     
     return (void*)maximum;
 }
@@ -772,7 +834,27 @@ int main(){
             printf("Enter depth: ");
             scanf("%d",&depth);
             for(int b = 0; b < depth; b++){
+                // NOT COMPLETED
+                int index = 2;
+                // input olarak alsak o valids arrayi?
+                // input alırken en son 1 konuyo ve en son nereye koyduğu bilgisi var
+                // en son nereye koyduğu yerine en son 2'nin koyduğu şekli alsın input olarak
+                // sonra bi array alsın 1 nere koyabiliyo diye
+                // hepsini yapsın
+                // şuanki haliyle sadece 1 tane hesaplar
+                // öbür türlü akar gider
+                // yeniden çalıştırdığında nerden bilcek hangi x y değerleini denemesi gerektiğini
+                while(check_done_my(board2,x,y)){
+                    if (index <= 2 * validlength){
+                        x = valids[index];
+                        y = valids[index+1];
+                        index += 2;
+                    }else{
+                        break;
+                    }
+                }
                 temp = best_place(x,y,step,lx,ly);
+                
                 Data data;
                 data.data1 = (int*)malloc(data_length * sizeof(int));
                 data.data1[0] = temp[0];
@@ -781,8 +863,10 @@ int main(){
                 data.data1[3] = x;
                 data.data1[4] = y;
                 data.data1[5] = 2;
-                
+                data.board = board2;
+                printf("BEFORE\n");
                 valids = findvalid(&data);
+                printf("AFTER\n");
                 savefile = fopen("save.txt","a");
                 for(int i = 0;i < 2 * directionsize;i++){
                     fprintf(savefile,"%d ",valids[i]);
@@ -807,5 +891,30 @@ int main(){
         
         
         return 0;
-    }// ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
+    }else if(mode == 3){
+        int x,y;
+        bool result;
+        int** deneme = (int**)malloc(rows * sizeof(int*));
+        for(int i = 0;i < rows;i++){
+            deneme[i] = (int*)malloc(columns * sizeof(int));
+        }
+        for(int i = 0;i < rows;i++){
+            for(int j = 0;j < columns;j++){
+                scanf("%d",&deneme[i][j]);
+            }
+        }
+        printf("X: \n");
+        scanf("%d",&x);
+        printf("Y: \n");
+        scanf("%d",&y);
+        result = check_done_my(deneme,x,y);
+        if (result){
+            printf("True\n");
+        }else{
+            printf("False\n");
+        }
+        printf("Result: %d\n",result);
+    }
+
+        // ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
 }
