@@ -13,7 +13,7 @@
 #define columns 8
 #define directionsize 28
 #define framecount 17
-#define data_length 6
+#define data_length 7
 #define PORT 9000
 
 int area = 0, userframe = -1, pcframe = -1;
@@ -73,7 +73,9 @@ typedef struct {
     //int not_x;
     //int not_y;
     //int color;
+    //int reference;
     bool ret;
+    bool is_max;
     int** board;
 }Data;
 
@@ -531,46 +533,105 @@ int* findvalid(Data* data){
 
 bool check_done_my(int** board,int x, int y){
     int** copy = (int**)malloc(rows * sizeof(int*));
-    for(int i = 0;i < rows;i++){
+    for(int i = 0; i < rows; i++) {
         copy[i] = (int*)malloc(columns * sizeof(int));
-        memcpy(copy[i],board[i],columns * sizeof(int));
+        memcpy(copy[i], board[i], columns * sizeof(int));
     }
     copy[x][y] = 1;
     
+    // Create socket
     int client_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (client_fd < 0) {
         perror("Socket creation failed");
-        return 1;
+        // Clean up memory before returning
+        for(int i = 0; i < rows; i++) {
+            free(copy[i]);
+        }
+        free(copy);
+        return 0; // Return 0 for failure
     }
 
+    // Set socket options to allow reuse of address
+    int opt = 1;
+    if (setsockopt(client_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt failed");
+        close(client_fd);
+        // Clean up memory
+        for(int i = 0; i < rows; i++) {
+            free(copy[i]);
+        }
+        free(copy);
+        return 0;
+    }
+
+    // Set up server address
     struct sockaddr_in server_address;
+    memset(&server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(PORT);
-    server_address.sin_addr.s_addr = inet_addr("192.168.1.156");
-
     
+    // Use localhost for testing or get the correct IP
+    // For production, replace with actual server IP
+    server_address.sin_addr.s_addr = inet_addr("127.0.0.1"); // Use localhost for testing
+    
+    // Try to connect with timeout
+    printf("Attempting to connect to server...\n");
     if (connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
         perror("Connection failed");
         close(client_fd);
-        return 1;
+        // Clean up memory
+        for(int i = 0; i < rows; i++) {
+            free(copy[i]);
+        }
+        free(copy);
+        return 0;
     }
 
     printf("Connected to server\n");
 
-    send(client_fd, *copy, rows * columns * sizeof(int), 0);
+    // Create a flat array to send data properly
+    int flat_array[rows * columns];
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < columns; j++) {
+            flat_array[i * columns + j] = copy[i][j];
+        }
+    }
+
+    // Send data
+    if (send(client_fd, flat_array, rows * columns * sizeof(int), 0) < 0) {
+        perror("Send failed");
+        close(client_fd);
+        // Clean up memory
+        for(int i = 0; i < rows; i++) {
+            free(copy[i]);
+        }
+        free(copy);
+        return 0;
+    }
     printf("Board sent to server\n");
 
+    // Receive result
     bool result;
-    recv(client_fd, &result, sizeof(result), 0);
+    if (recv(client_fd, &result, sizeof(result), 0) < 0) {
+        perror("Receive failed");
+        close(client_fd);
+        // Clean up memory
+        for(int i = 0; i < rows; i++) {
+            free(copy[i]);
+        }
+        free(copy);
+        return 0;
+    }
     printf("Server response: %d\n", result);
 
-    
+    // Close connection and clean up
     close(client_fd);
-    for(int i = 0;i < rows;i++){
+    for(int i = 0; i < rows; i++) {
         free(copy[i]);
     }
     free(copy);
-    return result;
+    
+    return result ? 1 : 0;
 }
 void* search(void *arg){
     Data* data = (Data*)arg;
@@ -579,17 +640,21 @@ void* search(void *arg){
         return (void*)result;
     }
 
-    int length = 0, info1, info2, a, b;
+    int  info1, info2, a, b;
     int* maximum = (int*)malloc(sizeof(int));
-    
+    if (data->is_max){
+        *maximum = -1000000;
+    }else{
+        *maximum = 1000000;
+    }
     Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
-    int** array;
+    
     int* result;
 
     result = (int*)malloc(2 * sizeof(int));
     result[0] = -1;
     result[1] = -1;
-    array = (int**)malloc(sizeof(int*));
+    
     if (data->data1[3] > -1 && data->data1[4] > -1){
         info1 = newnode[data->data1[3]][data->data1[4]]->frame;
     }else{
@@ -616,12 +681,9 @@ void* search(void *arg){
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] == 0 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2){
-
-            length++;
             
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = data->data1[5];
-            array = (int**)realloc(array,length * sizeof(int*));
-            array[length-1] = (int*)malloc(3 * sizeof(int));
+            
             datas[k] = (Data*)malloc(sizeof(Data));
             datas[k]->data1 = (int*)malloc(data_length * sizeof(int));
             datas[k]->data1[0] = data->data1[0] + directions[k][0];
@@ -630,7 +692,8 @@ void* search(void *arg){
             datas[k]->data1[3] = data->data1[0];
             datas[k]->data1[4] = data->data1[1];
             datas[k]->data1[5] = data->data1[5];
-            
+            datas[k]->data1[6] = *maximum;
+            datas[k]->is_max = !data->is_max;
             datas[k]->ret = false;
             datas[k]->board = (int**)malloc(rows * sizeof(int*));
             for (int i = 0; i < rows; i++) {
@@ -641,45 +704,48 @@ void* search(void *arg){
             
             int* temppp;
             temppp = search((void*)datas[k]);
-            
-            array[length-1][0] = *temppp;
+            if (data->is_max){
+                if (*temppp > *maximum){ // get max
+                    *maximum = *temppp;
+                    result[0] = data->data1[0] + directions[k][0];
+                    result[1] = data->data1[1] + directions[k][1];
+                }
+
+                if (*maximum < data->data1[6]){
+                    free(temppp);
+                    freedata(datas[k]);
+                    free(datas[k]);
+                    data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    break;
+                }
+            }else{
+                
+                if (*temppp < *maximum){ // get min
+                    *maximum = *temppp;
+                    result[0] = data->data1[0] + directions[k][0];
+                    result[1] = data->data1[1] + directions[k][1];
+                }
+
+                if (*maximum > data->data1[6]){
+                    free(temppp);
+                    freedata(datas[k]);
+                    free(datas[k]);
+                    data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    break;
+                }
+
+            }
+
             free(temppp);
-            
             freedata(datas[k]);
             free(datas[k]);
-
-            array[length-1][1] = data->data1[0] + directions[k][0];
-            array[length-1][2] = data->data1[1] + directions[k][1];
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
         }
     }
-
-    if (data->data1[2] % 2 == 1){
-        *maximum = -1000000;
-        for(int i = 0;i < length;i++){
-            if (array[i][0] > *maximum){
-                *maximum = array[i][0];
-                result[0] = array[i][1];
-                result[1] = array[i][2];
-            }
-            free(array[i]);
-        }
-    }else{
-        *maximum = 1000000;
-        for(int i = 0;i < length;i++){
-            if (array[i][0] < *maximum){
-                *maximum = array[i][0];
-                result[0] = array[i][1];
-                result[1] = array[i][2];
-            }
-            free(array[i]);
-        }
-    }
-    free(array);
+    
     free(datas);
     
     if (data->ret){
-        
         return (void*)result;
     }
     free(result);
@@ -715,6 +781,8 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.data1[3] = lx;
     data.data1[4] = ly;
     data.data1[5] = 2;
+    data.data1[6] = 999999999; //daha büyüğü olmalı
+    data.is_max = true;
     data.ret = true;
     int** board = (int**)malloc(rows * sizeof(int*));
     for (i = 0;i < rows;i++){

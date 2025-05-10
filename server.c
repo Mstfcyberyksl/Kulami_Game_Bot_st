@@ -4,111 +4,151 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define PORT 9000
-#define rows 8
-#define columns 8
+#define ROWS 8
+#define COLUMNS 8
 
 FILE* general_data_file;
+int server_fd;
 
-bool check_done_my(int** board){
+// Signal handler for clean shutdown
+void handle_signal(int sig) {
+    printf("\nShutting down server...\n");
+    close(server_fd);
+    exit(0);
+}
+
+bool check_done_my(int board[ROWS][COLUMNS]) {
     bool check = true;
     int index = 0;
-    general_data_file = fopen("game_data.txt","r");
-    char line[150];
-    int** copy = (int**)malloc(rows * sizeof(int*));
-    for(int i = 0;i < rows;i++){
-        copy[i] = (int*)malloc(columns * sizeof(int));
-        memcpy(copy[i],board[i],columns * sizeof(int));
+    
+    general_data_file = fopen("game_data.txt", "r");
+    if (general_data_file == NULL) {
+        perror("Failed to open game_data.txt");
+        return false;
     }
-    while (fgets(line, sizeof(line), general_data_file) != NULL){
+    
+    char line[150];
+    
+    while (fgets(line, sizeof(line), general_data_file) != NULL) {
         check = true;
         index = 0;
-        for(int i = 0;i < rows;i++){
-            for(int j = 0;j < columns;j++){
-                if (line[index] - '0' != copy[i][j]){
+        
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                if (line[index] - '0' != board[i][j]) {
                     check = false;
                     break;
                 }
                 index += 2;
             }
-            if(!check){
+            if (!check) {
                 break;
             }
         }
-        if (check){
-            for(int i = 0;i < rows;i++){
-                free(copy[i]);
-            }
-            free(copy);
+        
+        if (check) {
             fclose(general_data_file);
             return true;
-        } 
-    } 
-    for(int i = 0;i < rows;i++){
-        free(copy[i]);
+        }
     }
-    free(copy);
+    
     fclose(general_data_file);
     return false;
 }
 
 int main() {
+    // Set up signal handling for clean shutdown
+    signal(SIGINT, handle_signal);
     
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    // Create socket
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("Socket creation failed");
         return 1;
     }
-
     
+    // Set socket options
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt failed");
+        close(server_fd);
+        return 1;
+    }
+    
+    // Set up address structure
     struct sockaddr_in address;
+    memset(&address, 0, sizeof(address));
     int addrlen = sizeof(address);
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_addr.s_addr = INADDR_ANY;  // Accept connections on any interface
     address.sin_port = htons(PORT);
-
     
+    // Bind socket to address and port
     if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
         perror("Bind failed");
         close(server_fd);
-
         return 1;
     }
-
     
-    if (listen(server_fd, 3) < 0) {
+    // Listen for connections
+    if (listen(server_fd, 5) < 0) {  // Allow queue of up to 5 connections
         perror("Listen failed");
         close(server_fd);
         return 1;
     }
-
+    
     printf("Server listening on port %d...\n", PORT);
+    printf("Press Ctrl+C to stop the server\n");
     
     while (1) {
+        // Accept a connection
         int new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
         if (new_socket < 0) {
             perror("Accept failed");
             continue;
         }
-
-        printf("Client connected\n");
-
-        int** board = (int**)malloc(8 * sizeof(int*));
-        for (int i = 0; i < 8; i++) {
-            board[i] = (int*)malloc(8 * sizeof(int));
+        
+        // Get client's IP for logging
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(address.sin_addr), client_ip, INET_ADDRSTRLEN);
+        printf("Client connected from %s:%d\n", client_ip, ntohs(address.sin_port));
+        
+        // Receive board data as flat array
+        int board[ROWS][COLUMNS];
+        int bytes_received = recv(new_socket, board, ROWS * COLUMNS * sizeof(int), 0);
+        
+        if (bytes_received < 0) {
+            perror("Receive failed");
+            close(new_socket);
+            continue;
+        } else if (bytes_received != ROWS * COLUMNS * sizeof(int)) {
+            fprintf(stderr, "Incomplete data received: %d bytes\n", bytes_received);
+            close(new_socket);
+            continue;
         }
-
-        // Receive board data
-        recv(new_socket, *board, 8 * 8 * sizeof(int), 0);
-
+        
+        printf("Board data received, checking solution...\n");
+        
+        // Check if board is a solution
         bool result = check_done_my(board);
-        send(new_socket, &result, sizeof(result), 0);
-
+        printf("Result: %s\n", result ? "Solution found" : "Not a solution");
+        
+        // Send result back to client
+        if (send(new_socket, &result, sizeof(result), 0) < 0) {
+            perror("Send failed");
+        } else {
+            printf("Result sent to client\n");
+        }
+        
+        // Close client connection
         close(new_socket);
+        printf("Client disconnected\n");
     }
-
+    
+    // This point should not be reached due to the infinite loop and signal handler
     close(server_fd);
-
     return 0;
 }
