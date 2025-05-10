@@ -16,7 +16,7 @@ black_img = black_img.resize((80, 80))
 black_image = ImageTk.PhotoImage(black_img)
 
 # Load the shared library and define function prototypes
-functionbest = ctypes.CDLL("./kulami_game.so")
+functionbest = ctypes.CDLL("./kulami_game.dll")
 functionbest.best_place.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 functionbest.best_place.restype = ctypes.POINTER(ctypes.c_int)
 functionbest.main()
