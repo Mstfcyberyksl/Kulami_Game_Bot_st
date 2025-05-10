@@ -781,7 +781,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.data1[3] = lx;
     data.data1[4] = ly;
     data.data1[5] = 2;
-    data.data1[6] = 999999999; //daha büyüğü olmalı
+    data.data1[6] = 999999999;
     data.is_max = true;
     data.ret = true;
     int** board = (int**)malloc(rows * sizeof(int*));
@@ -791,7 +791,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
     }
     
     data.board = board;
-    
     
     printf("X: %d Y: %d\n",x,y);
     file = fopen("data.txt","a");
@@ -839,150 +838,5 @@ int main(){
             newnode[i][j]->frame = which(i,j);
         }
     }
-    int mode;
-    printf("Enter the mode: ");
-    scanf("%d",&mode);
-    printf("\n");
-    if (mode == 1){
-        return 0;
-    }else if (mode == 2){
-        printf("Enter mode again: ");
-        scanf("%d",&mode);
-        if (mode == 1){
-            inputfile = fopen("input.txt","r");
-            if (inputfile == NULL){
-                printf("File not found\n");
-                return 0;
-            }
-            int times;
-            fscanf(inputfile,"%d",&times);
-            for(int i = 0;i < times;i++){
-                clock_t start = clock();
-                
-                for(int j = 0;j < rows;j++){
-                    for(int k = 0;k < columns;k++){
-                        fscanf(inputfile,"%d",&board2[j][k]);
-                    }
-                }
-                int x,y,step,lx,ly;
-                fscanf(inputfile,"%d",&x);
-                fscanf(inputfile,"%d",&y);
-                fscanf(inputfile,"%d",&step);
-                fscanf(inputfile,"%d",&lx);
-                fscanf(inputfile,"%d",&ly);
-                
-                best_place(x,y,step,lx,ly);
-                clock_t end = clock();
-                double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-                outputfile = fopen("output.txt","a");
-                fprintf(file,"Time: %f\n",time_spent);
-                fclose(outputfile);
-            }
-            fclose(inputfile);
-        }else if (mode == 2){
-            inputfile = fopen("input.txt","r");
-            if (inputfile == NULL){
-                printf("File not found\n");
-                return 0;
-            }
-            int times;
-            fscanf(inputfile,"%d",&times);
-            for(int j = 0;j < rows;j++){
-                for(int k = 0;k < columns;k++){
-                    fscanf(inputfile,"%d",&board2[j][k]);
-                }
-            }
-            int x,y,step,lx,ly,depth;
-            int *temp, *valids;
-            fscanf(inputfile,"%d",&x);
-            fscanf(inputfile,"%d",&y);
-            fscanf(inputfile,"%d",&step);
-            fscanf(inputfile,"%d",&lx);
-            fscanf(inputfile,"%d",&ly);
-            printf("Enter depth: ");
-            scanf("%d",&depth);
-            for(int b = 0; b < depth; b++){
-                // NOT COMPLETED
-                int index = 2;
-                // input olarak alsak o valids arrayi?
-                // input alırken en son 1 konuyo ve en son nereye koyduğu bilgisi var
-                // en son nereye koyduğu yerine en son 2'nin koyduğu şekli alsın input olarak
-                // sonra bi array alsın 1 nere koyabiliyo diye
-                // hepsini yapsın
-                // şuanki haliyle sadece 1 tane hesaplar
-                // öbür türlü akar gider
-                // yeniden çalıştırdığında nerden bilcek hangi x y değerleini denemesi gerektiğini
-                while(check_done_my(board2,x,y)){
-                    if (index <= 2 * validlength){
-                        x = valids[index];
-                        y = valids[index+1];
-                        index += 2;
-                    }else{
-                        break;
-                    }
-                }
-                temp = best_place(x,y,step,lx,ly);
-                
-                Data data;
-                data.data1 = (int*)malloc(data_length * sizeof(int));
-                data.data1[0] = temp[0];
-                data.data1[1] = temp[1];
-                data.data1[2] = step;
-                data.data1[3] = x;
-                data.data1[4] = y;
-                data.data1[5] = 2;
-                data.board = board2;
-                printf("BEFORE\n");
-                valids = findvalid(&data);
-                printf("AFTER\n");
-                savefile = fopen("save.txt","a");
-                for(int i = 0;i < 2 * directionsize;i++){
-                    fprintf(savefile,"%d ",valids[i]);
-                }
-                fprintf(savefile,"\n");
-                for(int i = 0;i < rows;i++){
-                    for(int j = 0;j < columns;j++){
-                        fprintf(savefile,"%d ",board2[i][j]);
-                    }
-                }
-                fprintf(savefile,"\n");
-                fclose(savefile);
-                x = valids[0];
-                y = valids[1];
-                lx = temp[0];
-                ly = temp[1];
-                
-            }
-        }
-        
-        
-        
-        
-        return 0;
-    }else if(mode == 3){
-        int x,y;
-        bool result;
-        int** deneme = (int**)malloc(rows * sizeof(int*));
-        for(int i = 0;i < rows;i++){
-            deneme[i] = (int*)malloc(columns * sizeof(int));
-        }
-        for(int i = 0;i < rows;i++){
-            for(int j = 0;j < columns;j++){
-                scanf("%d",&deneme[i][j]);
-            }
-        }
-        printf("X: \n");
-        scanf("%d",&x);
-        printf("Y: \n");
-        scanf("%d",&y);
-        result = check_done_my(deneme,x,y);
-        if (result){
-            printf("True\n");
-        }else{
-            printf("False\n");
-        }
-        printf("Result: %d\n",result);
-    }
-
-        // ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
+    return 0; // ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
 }
