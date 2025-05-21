@@ -146,7 +146,7 @@ void* horizontal_points(void *arg){
             }
         }
     }
-
+    // 
     *result = pc - user;
     for (int i = 0;i < rows;i++){
         free(board[i]);
@@ -457,14 +457,15 @@ int* calculate(int color, int** board){
     int** temp;
     temp = (int**)malloc(calcfuncsize * sizeof(int*));
     
-    temp[0] = horizontal_points((void*)parray[0]);
-    temp[1] = vertical_points((void*)parray[1]);
-    temp[2] = diagonal_points_45((void*)parray[2]);
-    temp[3] = diagonal_points_135((void*)parray[3]);
-    temp[4] = place_area_points((void*)parray[4]);
-    temp[5] = marble_area_points((void*)parray[5]);
+    temp[0] = horizontal_points((void*)parray[0]); // yatay 0.5
+    temp[1] = vertical_points((void*)parray[1]); // dikey 0.5
+    temp[2] = diagonal_points_45((void*)parray[2]); //sağ çapraz 0.75
+    temp[3] = diagonal_points_135((void*)parray[3]); //sol çapraz 0.75
+    temp[4] = place_area_points((void*)parray[4]); //tabla 5
+    temp[5] = marble_area_points((void*)parray[5]); //nokta 2.5
     int* sum = (int*)malloc(sizeof(int));
     *sum = *(int*)temp[0] + *(int*)temp[1] + *(int*)temp[2] + *(int*)temp[3] + *(int*)temp[4] + *(int*)temp[5];
+    
     for(int i = 0;i < calcfuncsize; i++){
         freedata2(parray[i]);
         free(parray[i]);
@@ -681,7 +682,17 @@ void* search(void *arg){
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] == 0 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2){
+            if (data->ret){
+                
+                printf("k = %d\n",k);
+            }
             
+            if(data->data1[2] == 2){
+                printf("step = 2 k = %d\n",k);
+            }
+            if(data->data1[3] == 2){
+                printf("step = 3 k = %d\n",k);
+            }
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = data->data1[5];
             
             datas[k] = (Data*)malloc(sizeof(Data));
@@ -720,7 +731,7 @@ void* search(void *arg){
                 }
             }else{
                 
-                if (*temppp < *maximum){ // get min
+                if (*temppp < *maximum){
                     *maximum = *temppp;
                     result[0] = data->data1[0] + directions[k][0];
                     result[1] = data->data1[1] + directions[k][1];
