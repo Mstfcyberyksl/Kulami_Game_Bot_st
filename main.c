@@ -696,7 +696,8 @@ void* search(void *arg){
             datas[k]->data1[3] = data->data1[0];
             datas[k]->data1[4] = data->data1[1];
             datas[k]->data1[5] = data->data1[5];
-            datas[k]->data1[6] = *maximum;
+            datas[k]->data1[6] = data->data1[6];
+            datas[k]->data1[7] = data->data1[7];
             datas[k]->is_max = !data->is_max;
             datas[k]->ret = false;
             datas[k]->board = (int**)malloc(rows * sizeof(int*));
@@ -737,7 +738,7 @@ void* search(void *arg){
                 }
 
 
-                if( *maximum < data->data1[7] ){
+                if(*maximum < data->data1[7] ){
                     data->data1[7] = *maximum;
                 }
 
