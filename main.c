@@ -13,7 +13,7 @@
 #define columns 8
 #define directionsize 28
 #define framecount 17
-#define data_length 7
+#define data_length 8
 #define PORT 9000
 
 int area = 0, userframe = -1, pcframe = -1;
@@ -73,7 +73,8 @@ typedef struct {
     //int not_x;
     //int not_y;
     //int color;
-    //int reference;
+    //int alpha;
+    //int beta;
     bool ret;
     bool is_max;
     int** board;
@@ -713,8 +714,13 @@ void* search(void *arg){
                     result[0] = data->data1[0] + directions[k][0];
                     result[1] = data->data1[1] + directions[k][1];
                 }
-
-                if (*maximum > data->data1[6]){
+                if( *maximum > data->data1[6] ){
+                    data->data1[6] = *maximum;
+                }
+                // sen ilk o  value kısmını yapıyosun sadece
+                // alpha betayı da o value ile min max'e sokman lzm
+                // sonra alpha'yla betayı karşılaştırman lazım
+                if (*maximum >= data->data1[7]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);
@@ -730,7 +736,12 @@ void* search(void *arg){
                     result[1] = data->data1[1] + directions[k][1];
                 }
 
-                if (*maximum < data->data1[6]){
+
+                if( *maximum < data->data1[7] ){
+                    data->data1[7] = *maximum;
+                }
+
+                if (*maximum <= data->data1[6]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);
@@ -784,7 +795,8 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.data1[3] = lx;
     data.data1[4] = ly;
     data.data1[5] = 2;
-    data.data1[6] = 999999999;
+    data.data1[6] = -999999999;
+    data.data1[7] = 999999999;
     data.is_max = true;
     data.ret = true;
     int** board = (int**)malloc(rows * sizeof(int*));
