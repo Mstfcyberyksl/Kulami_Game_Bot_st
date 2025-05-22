@@ -16,17 +16,16 @@ black_img = black_img.resize((80, 80))
 black_image = ImageTk.PhotoImage(black_img)
 
 # Load the shared library and define function prototypes
-functionbest = ctypes.CDLL("./kulami_game.dll")
+functionbest = ctypes.CDLL("./kulami_game.so")
 functionbest.best_place.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 functionbest.best_place.restype = ctypes.POINTER(ctypes.c_int)
 functionbest.main()
 last_move = [-1,-1]
 
 def button_click(x, y):
-    global move_count
-    # Change clicked button to red, then get best move and mark it black
+    
     buttons[(x, y)].config(image=red_image)
-    result = functionbest.best_place(x, y, 15, last_move[0], last_move[1])
+    result = functionbest.best_place(x, y, 9, last_move[0], last_move[1])
     if result[0] == -1 and result[1] == -1:
         buttons[(x, y)].config(image=None)
     else:

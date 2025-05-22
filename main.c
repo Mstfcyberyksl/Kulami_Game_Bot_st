@@ -32,8 +32,8 @@ int** ones;
 
 
 int directions[directionsize][2] = {
-    {0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6}, {0, 7},
     {0, -1}, {0, -2}, {0, -3}, {0, -4}, {0, -5}, {0, -6}, {0, -7},
+    {0, 1}, {0, 2}, {0, 3}, {0, 4}, {0, 5}, {0, 6}, {0, 7},
     {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0},
     {-1, 0}, {-2, 0}, {-3, 0}, {-4, 0}, {-5, 0}, {-6, 0}, {-7, 0}
 };
@@ -671,7 +671,9 @@ void* search(void *arg){
     }else{
         printf("COLOR ERROR %d",data->data1[5]);
     }
-
+    if(data->ret){
+        printf("START SEARCH\n)");
+    }
     for (int k = 0;k < directionsize;k++){
         if ((data->data1[0] + directions[k][0] != data->data1[3] ||
             data->data1[1] + directions[k][1] != data->data1[4]) &&
@@ -682,17 +684,7 @@ void* search(void *arg){
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] == 0 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2){
-            if (data->ret){
-                
-                printf("k = %d\n",k);
-            }
             
-            if(data->data1[2] == 2){
-                printf("step = 2 k = %d\n",k);
-            }
-            if(data->data1[3] == 2){
-                printf("step = 3 k = %d\n",k);
-            }
             data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = data->data1[5];
             
             datas[k] = (Data*)malloc(sizeof(Data));
@@ -722,11 +714,12 @@ void* search(void *arg){
                     result[1] = data->data1[1] + directions[k][1];
                 }
 
-                if (*maximum < data->data1[6]){
+                if (*maximum > data->data1[6]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);
                     data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    
                     break;
                 }
             }else{
@@ -737,11 +730,12 @@ void* search(void *arg){
                     result[1] = data->data1[1] + directions[k][1];
                 }
 
-                if (*maximum > data->data1[6]){
+                if (*maximum < data->data1[6]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);
                     data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    
                     break;
                 }
 
@@ -766,7 +760,7 @@ void* search(void *arg){
 
 int* best_place(int x, int y,int step, int lx, int ly){
     int i, j;
-    printf("X: %d Y: %d\n",x,y);
+    
     board2[x][y] = 1;
 
     genstep = step;
@@ -781,8 +775,6 @@ int* best_place(int x, int y,int step, int lx, int ly){
         temp[1] = -1;
         return temp;
     }
-
-    printf("X: %d Y: %d\n",x,y);
     int* temp;
     Data data;
     data.data1 = (int*)malloc(data_length * sizeof(int));
@@ -803,7 +795,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
     
     data.board = board;
     
-    printf("X: %d Y: %d\n",x,y);
+    
     file = fopen("data.txt","a");
     for(int i = 0;i < rows;i++){
         for(int j = 0;j < columns;j++){
@@ -815,7 +807,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
     temp = (int*)search((void*)&data);
     fprintf(file,"(%d,%d)\n",temp[0],temp[1]);
     fclose(file);
-    printf("X: %d Y: %d\n",x,y);
+    
     printf("X: %d Y: %d\n",temp[0],temp[1]);
     board2[temp[0]][temp[1]] = 2;
     
