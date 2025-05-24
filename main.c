@@ -710,7 +710,7 @@ void* search(void *arg){
             int* temppp;
             temppp = search((void*)datas[k]);
             if (data->is_max){
-                if (*temppp > *maximum){ // get max
+                if (*temppp > *maximum){
                     *maximum = *temppp;
                     result[0] = data->data1[0] + directions[k][0];
                     result[1] = data->data1[1] + directions[k][1];
@@ -718,10 +718,8 @@ void* search(void *arg){
                 if( *maximum > data->data1[6] ){
                     data->data1[6] = *maximum;
                 }
-                // sen ilk o  value kısmını yapıyosun sadece
-                // alpha betayı da o value ile min max'e sokman lzm
-                // sonra alpha'yla betayı karşılaştırman lazım
-                if (*maximum >= data->data1[7]){
+                
+                if (data->data1[6] >= data->data1[7]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);
@@ -742,7 +740,7 @@ void* search(void *arg){
                     data->data1[7] = *maximum;
                 }
 
-                if (*maximum <= data->data1[6]){
+                if (data->data1[7] <= data->data1[6]){
                     free(temppp);
                     freedata(datas[k]);
                     free(datas[k]);

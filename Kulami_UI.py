@@ -25,7 +25,7 @@ last_move = [-1,-1]
 def button_click(x, y):
     
     buttons[(x, y)].config(image=red_image)
-    result = functionbest.best_place(x, y, 9, last_move[0], last_move[1])
+    result = functionbest.best_place(x, y, 15, last_move[0], last_move[1])
     if result[0] == -1 and result[1] == -1:
         buttons[(x, y)].config(image=None)
     else:
