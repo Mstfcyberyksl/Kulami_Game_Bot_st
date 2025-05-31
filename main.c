@@ -592,6 +592,17 @@ int piece_count(int** board){
     }
     return count;
 }
+int moves[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+int surrounding_piece_count(int** board, int x, int y){
+    int result = 0;
+
+    for(int i = 0;i < 8;i++){
+        if(x+moves[i][0] < 8 && x+moves[i][0] > -1 && y+moves[i][1] < 8 && y+moves[i][1] > -1 && board[x+moves[i][0]][y+moves[i][1]] != 0){
+            result++;
+        }
+    }
+    return result;
+}
 int* search(void *arg){
     Data* data = (Data*)arg;
     if (data->data1[2] == 0){
@@ -600,7 +611,9 @@ int* search(void *arg){
         return result;
     }
 
-    int info1, info2, a, b,maximum;
+    int info1, info2, a, b,maximum,move_count = 0, not_minimum, index,temp_swap;
+    int directions_local[directionsize][2];
+    int direction_scores[directionsize];
 
     if (data->is_max){
         maximum = -1000000;
@@ -641,7 +654,7 @@ int* search(void *arg){
     bool piece_check = piece_count(data->board) < 56;
     bool got_into = false;
 
-    for (int k = 0;k < directionsize;k++){
+    for(int k = 0;k < directionsize;k++){
         if ((data->data1[0] + directions[k][0] != data->data1[3] ||
             data->data1[1] + directions[k][1] != data->data1[4]) &&
             data->data1[0] + directions[k][0] < ROWS &&
@@ -652,13 +665,43 @@ int* search(void *arg){
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
             newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2 &&
             piece_check){
+                directions_local[move_count][0] = directions[k][0];
+                directions_local[move_count][1] = directions[k][1];
+                direction_scores[move_count] = -1 * abs(data->data1[0] + directions[k][0] - ROWS/2) - abs(data->data1[1] + directions[k][1] - COLUMNS/2) + surrounding_piece_count(data->board,data->data1[0] + directions[k][0], data->data1[1] + directions[k][1]);
+                move_count++;
+            }
+    }
+    for(int i = 0;i < move_count - 1;i++){
+        not_minimum = direction_scores[i];
+        index = i;
+        for(int j = i+1;j < move_count;j++){
+            if(direction_scores[j] > not_minimum){
+                index = j;
+                not_minimum = direction_scores[j];
+            }
+        }
+        temp_swap = direction_scores[index];
+        direction_scores[index] = direction_scores[i];
+        direction_scores[i] = temp_swap;
+
+        temp_swap = directions_local[index][0];
+        directions_local[index][0] = directions_local[i][0];
+        directions_local[i][0] = temp_swap;
+
+        temp_swap = directions_local[index][1];
+        directions_local[index][1] = directions_local[i][1];
+        directions_local[i][1] = temp_swap;
+
+    }
+    for (int k = 0;k < move_count;k++){
+
             got_into = true;
-            data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = data->data1[5];
+            data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = data->data1[5];
 
             datas[k] = (Data*)malloc(sizeof(Data));
             datas[k]->data1 = (int*)malloc(data_length * sizeof(int));
-            datas[k]->data1[0] = data->data1[0] + directions[k][0];
-            datas[k]->data1[1] = data->data1[1] + directions[k][1];
+            datas[k]->data1[0] = data->data1[0] + directions_local[k][0];
+            datas[k]->data1[1] = data->data1[1] + directions_local[k][1];
             datas[k]->data1[2] = data->data1[2] - 1;
             datas[k]->data1[3] = data->data1[0];
             datas[k]->data1[4] = data->data1[1];
@@ -678,8 +721,8 @@ int* search(void *arg){
                 if (*temppp > maximum){
                     maximum = *temppp;
                     if(data->ret){
-                        result[0] = data->data1[0] + directions[k][0];
-                        result[1] = data->data1[1] + directions[k][1];
+                        result[0] = data->data1[0] + directions_local[k][0];
+                        result[1] = data->data1[1] + directions_local[k][1];
                     }
                 }
                 if(maximum > data->data1[6] ){
@@ -690,7 +733,7 @@ int* search(void *arg){
                     freedata(datas[k]);
                     free(datas[k]);
                     free(temppp);
-                    data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
 
                     break;
                 }
@@ -698,8 +741,8 @@ int* search(void *arg){
                 if (*temppp < maximum){
                     maximum = *temppp;
                     if(data->ret){
-                        result[0] = data->data1[0] + directions[k][0];
-                        result[1] = data->data1[1] + directions[k][1];
+                        result[0] = data->data1[0] + directions_local[k][0];
+                        result[1] = data->data1[1] + directions_local[k][1];
                     }
                 }
                 if(maximum < data->data1[7] ){
@@ -709,15 +752,15 @@ int* search(void *arg){
                     freedata(datas[k]);
                     free(datas[k]);
                     free(temppp);
-                    data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
+                    data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
                     break;
                 }
             }
             freedata(datas[k]);
             free(datas[k]);
             free(temppp);
-            data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] = 0;
-        }
+            data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
+
     }
     if(!got_into){
         maximum = calculate(2,data->board);
