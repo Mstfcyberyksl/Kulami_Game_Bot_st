@@ -16,6 +16,45 @@
 #define data_length 8
 #define PORT 9000
 #define BOARD_POOL_SIZE 100
+#define DATA_SIZE_CLIENT (ROWS * COLUMNS + 5)  // Board + extra parameters
+
+// Network communication helper functions
+static ssize_t send_all(int sockfd, const void* buf, size_t len) {
+    size_t total_sent = 0;
+    const char* ptr = (const char*)buf;
+    
+    while (total_sent < len) {
+        ssize_t sent = send(sockfd, ptr + total_sent, len - total_sent, 0);
+        if (sent <= 0) {
+            return -1;  // Error or connection closed
+        }
+        total_sent += sent;
+    }
+    return total_sent;
+}
+
+static ssize_t recv_all(int sockfd, void* buf, size_t len) {
+    size_t total_received = 0;
+    char* ptr = (char*)buf;
+    
+    while (total_received < len) {
+        ssize_t received = recv(sockfd, ptr + total_received, len - total_received, 0);
+        if (received <= 0) {
+            return -1;  // Error or connection closed
+        }
+        total_received += received;
+    }
+    return total_received;
+}
+
+static void free_local_board(int** board, int allocated_rows) {
+    if (board) {
+        for (int i = 0; i < allocated_rows; i++) {
+            free(board[i]);
+        }
+        free(board);
+    }
+}
 
 // Inline helper functions for better performance
 static inline bool is_valid_position(int x, int y) {
@@ -541,92 +580,226 @@ int* findvalid(Data* data){
     return result;
 }
 
-bool check_done_my(int** board,int x, int y){
-    // Use memory pool for better performance
-    int** copy = get_board_from_pool();
-    for(int i = 0; i < ROWS; i++) {
-        memcpy(copy[i], board[i], COLUMNS * sizeof(int));
-    }
-    copy[x][y] = 1;
+int generate_data() {
+    int client_fd = -1;
+    int* best_place_res = NULL;
+    int** local_board = NULL;
+    int result_buffer[DATA_SIZE_CLIENT]; // Use a fixed-size buffer
 
-    // Initialize socket connection if not already done
-    if (!socket_initialized) {
-        cached_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (cached_socket < 0) {
-            perror("Socket creation failed");
-            return_board_to_pool(copy);
-            return 0;
+    // Allocate local_board
+    local_board = (int**)malloc(ROWS * sizeof(int*));
+    if (!local_board) {
+        perror("Failed to allocate local_board (ROWS)");
+        return -1;
+    }
+    for (int i = 0; i < ROWS; i++) {
+        local_board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        if (!local_board[i]) {
+            perror("Failed to allocate local_board (COLUMNS)");
+            free_local_board(local_board, i); // Free already allocated ROWS
+            return -1;
+        }
+    }
+
+    // --- First Connection: Get latest state (Mode 1) ---
+    client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        perror("Socket creation failed (Mode 1)");
+        free_local_board(local_board, ROWS);
+        return -1;
+    }
+
+    struct sockaddr_in server_address;
+    memset(&server_address, 0, sizeof(server_address));
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(PORT);
+    // IP ADDRESS   
+    if (inet_pton(AF_INET, "127.0.0.1", &server_address.sin_addr) <= 0) {
+        perror("Invalid address/ Address not supported");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    }
+
+    printf("Attempting to connect to server (Mode 1)...\n");
+    if (connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+        perror("Connection failed (Mode 1)");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    }
+    printf("Connected to server (Mode 1)\n");
+
+    int mode = 1;
+    int net_mode = htonl(mode);
+    if (send_all(client_fd, &net_mode, sizeof(net_mode)) < 0) {
+        fprintf(stderr, "Send mode 1 failed\n");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    }
+    printf("MODE 1 sent to server\n");
+
+    // Receive result (could be full array or single error int)
+    ssize_t received_bytes = recv(client_fd, result_buffer, sizeof(result_buffer), 0);
+
+    if (received_bytes < 0) {
+        perror("Receive failed (Mode 1)");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    } else if (received_bytes == 0) {
+        fprintf(stderr, "Server closed connection unexpectedly (Mode 1 receive)\n");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    } else if (received_bytes == sizeof(int)) {
+        // Assume it's a single integer error/status code from the server
+        int status_code = ntohl(result_buffer[0]);
+        printf("Received status/error code from server (Mode 1): %d\n", status_code);
+        if (status_code < 0) { // Typically negative for errors
+             fprintf(stderr, "Server indicated an error or no data available.\n");
+        }
+        // Cannot proceed to game logic if we don't have full board
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1; // Or handle differently based on status_code
+    } else if (received_bytes == sizeof(result_buffer)) {
+        printf("Full game state received from server.\n");
+        // Full array received, convert each element from network to host byte order
+        for (int i = 0; i < DATA_SIZE_CLIENT; i++) {
+            result_buffer[i] = ntohl(result_buffer[i]);
         }
 
-        // Set socket options to allow reuse of address
-        int opt = 1;
-        if (setsockopt(cached_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-            perror("setsockopt failed");
-            close(cached_socket);
-            cached_socket = -1;
-            return_board_to_pool(copy);
-            return 0;
+        // Populate local_board from the first ROWS * COLUMNS elements
+        for (int i = 0; i < ROWS; i++) {
+            for (int j = 0; j < COLUMNS; j++) {
+                local_board[i][j] = result_buffer[COLUMNS * i + j];
+            }
         }
 
-        // Set up server address
-        memset(&cached_server_addr, 0, sizeof(cached_server_addr));
-        cached_server_addr.sin_family = AF_INET;
-        cached_server_addr.sin_port = htons(PORT);
-        cached_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-        
-        socket_initialized = true;
+        // Call game logic
+        printf("Calling best_place logic...\n");
+        best_place_res = best_place(result_buffer[DATA_SIZE_CLIENT - 5],
+                                   result_buffer[DATA_SIZE_CLIENT - 4],
+                                   result_buffer[DATA_SIZE_CLIENT - 3],
+                                   result_buffer[DATA_SIZE_CLIENT - 2],
+                                   result_buffer[DATA_SIZE_CLIENT - 1]);
+        if (!best_place_res) {
+            fprintf(stderr, "best_place function failed or returned NULL.\n");
+            close(client_fd);
+            free_local_board(local_board, ROWS);
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "Received unexpected number of bytes (Mode 1): %zd\n", received_bytes);
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        return -1;
+    }
+    close(client_fd); // Close first connection
+
+    // If best_place_res is NULL here, it means we didn't get full data or best_place failed.
+    // The previous conditional block should have handled this. This is a safeguard.
+    if (!best_place_res) {
+        fprintf(stderr, "Cannot proceed to Mode 2: best_place result is not available.\n");
+        free_local_board(local_board, ROWS);
+        // best_place_res is already NULL, no need to free.
+        return -1;
     }
 
-    // Try to connect (reuse existing socket if possible)
-    if (connect(cached_socket, (struct sockaddr*)&cached_server_addr, sizeof(cached_server_addr)) < 0) {
-        perror("Connection failed");
-        close(cached_socket);
-        cached_socket = -1;
-        socket_initialized = false;
-        return_board_to_pool(copy);
-        return 0;
+    // --- Second Connection: Send updated state (Mode 2) ---
+    client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_fd < 0) {
+        perror("Socket creation failed (Mode 2)");
+        free_local_board(local_board, ROWS);
+        free(best_place_res);
+        return -1;
     }
 
-    printf("Connected to server\n");
+    printf("Attempting to connect to server (Mode 2)...\n");
+    if (connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+        perror("Connection failed (Mode 2)");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        free(best_place_res);
+        return -1;
+    }
+    printf("Reconnected to server (Mode 2)\n");
 
-    // Create a flat array to send data properly
-    int flat_array[ROWS * COLUMNS];
+    mode = 2;
+    net_mode = htonl(mode);
+    if (send_all(client_fd, &net_mode, sizeof(net_mode)) < 0) {
+        fprintf(stderr, "Send mode 2 failed\n");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        free(best_place_res);
+        return -1;
+    }
+    printf("MODE 2 sent to server\n");
+
+    // Prepare the result_buffer to send:
+    // 1. Copy modified local_board back to the start of result_buffer
     for (int i = 0; i < ROWS; i++) {
         for (int j = 0; j < COLUMNS; j++) {
-            flat_array[i * COLUMNS + j] = copy[i][j];
+            result_buffer[COLUMNS * i + j] = local_board[i][j];
+        }
+    }
+    // 2. Update the extra parameters based on game logic (example logic from original)
+    // Assuming original result_buffer[64] through result_buffer[68] were used as input
+    // and now we update some of them with best_place_res.
+    // The original client's update logic:
+    // result[67] = result[64]; // This was using original result[64]
+    // result[68] = result[65]; // This was using original result[65]
+    // For this example, let's assume result_buffer still holds the necessary values for elements 66, 67, 68
+    // And elements 64, 65 are updated by best_place_res.
+    // indices: DATA_SIZE_CLIENT-5, DATA_SIZE_CLIENT-4, ..., DATA_SIZE_CLIENT-1
+
+    // This part needs to be correct according to your game logic.
+    // Example: Keep original value for result_buffer[DATA_SIZE_CLIENT-1] (orig index 68)
+    // Keep original value for result_buffer[DATA_SIZE_CLIENT-2] (orig index 67)
+    // Keep original value for result_buffer[DATA_SIZE_CLIENT-3] (orig index 66)
+    // Update DATA_SIZE_CLIENT-5 (orig 64) and DATA_SIZE_CLIENT-4 (orig 65)
+    result_buffer[DATA_SIZE_CLIENT - 5] = best_place_res[0]; // Example: best_place_res[0] -> result_buffer[64]
+    result_buffer[DATA_SIZE_CLIENT - 4] = best_place_res[1]; // Example: best_place_res[1] -> result_buffer[65]
+    // The other EXTRA_CLIENT fields (e.g., result_buffer[66,67,68]) would retain their values
+    // from the initial Mode 1 fetch if not explicitly changed here.
+
+    printf("Preparing to send updated game state...\n");
+    // Convert the entire result_buffer to network byte order before sending
+    for (int i = 0; i < DATA_SIZE_CLIENT; i++) {
+        result_buffer[i] = htonl(result_buffer[i]);
+    }
+
+    if (send_all(client_fd, result_buffer, sizeof(result_buffer)) < 0) {
+        fprintf(stderr, "Send updated game state failed\n");
+        close(client_fd);
+        free_local_board(local_board, ROWS);
+        free(best_place_res);
+        return -1;
+    }
+    printf("Updated game state sent to server.\n");
+
+    // Receive confirmation from server
+    int confirmation_code_net;
+    if (recv_all(client_fd, &confirmation_code_net, sizeof(confirmation_code_net)) < 0) {
+        fprintf(stderr, "Failed to receive confirmation (Mode 2)\n");
+        // Still, we attempted the operation, so clean up and decide on return.
+    } else {
+        int confirmation_code_host = ntohl(confirmation_code_net);
+        printf("Server confirmation (Mode 2): %d\n", confirmation_code_host);
+        if (confirmation_code_host != 1) {
+             fprintf(stderr, "Server indicated failure to store new state.\n");
+             // Optionally change return status based on this
         }
     }
 
-    // Send data
-    if (send(cached_socket, flat_array, ROWS * COLUMNS * sizeof(int), 0) < 0) {
-        perror("Send failed");
-        close(cached_socket);
-        cached_socket = -1;
-        socket_initialized = false;
-        return_board_to_pool(copy);
-        return 0;
-    }
-    printf("Board sent to server\n");
+    close(client_fd);
+    free_local_board(local_board, ROWS);
+    free(best_place_res);
 
-    // Receive result
-    bool result;
-    if (recv(cached_socket, &result, sizeof(result), 0) < 0) {
-        perror("Receive failed");
-        close(cached_socket);
-        cached_socket = -1;
-        socket_initialized = false;
-        return_board_to_pool(copy);
-        return 0;
-    }
-    printf("Server response: %d\n", result);
-
-    // Close connection and clean up
-    close(cached_socket);
-    cached_socket = -1;
-    socket_initialized = false;
-    return_board_to_pool(copy);
-
-    return result ? 1 : 0;
+    printf("generate_data completed successfully.\n");
+    return 0; // Success
 }
 
 static inline int piece_count(int** board){
