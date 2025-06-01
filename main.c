@@ -60,6 +60,75 @@ const int places_45[7][2] = {
 const int places_135[7][2] = {
         {7,4},{6,7},{5,7},{4,7},{7,5},{7,6},{7,7}
     };
+
+typedef struct block{
+    bool is_free;
+    size_t size;
+    struct block* next;
+}block;
+
+typedef struct MemoryPool{
+    char* memory;
+    size_t size;
+    block* first_block;
+} MemoryPool;
+
+MemoryPool* memorypool;
+
+void create_memory_pool(size_t size){
+    memorypool = malloc(sizeof(MemoryPool));
+    memorypool->memory = malloc(size);
+    memorypool->size = size;
+
+    memorypool->first_block = (block*)memorypool->memory;
+    memorypool->first_block->size = memorypool->size - sizeof(block);
+    memorypool->first_block->is_free = 1;
+    memorypool->first_block->next = NULL;
+
+}
+
+void* pool_malloc(size_t size){
+    block* current = memorypool->first_block;
+    while(current){
+        if(current->is_free && current->size >= size){
+            current->is_free = 0;
+
+            if(current->size > size + sizeof(block) + 8){
+                block* new_block = (block*)((char*)current + sizeof(block) + size);
+                new_block->size = current->size - size - sizeof(block);
+                new_block->is_free = 1;
+                new_block->next = current->next;
+
+                current->next = new_block;
+                current->size = size;
+
+            }
+
+            return (char*)current + sizeof(block);
+        }
+        current = current->next;
+    }
+    return NULL;
+}
+
+void free_chunk(void* ptr){
+    if(!ptr){
+        return;
+    }
+
+    block* chunk = (block*)((char*)ptr-sizeof(block)); // is the order is like sizeof(block) ->the real data part and ptr points to between them?
+    chunk->is_free = 1;
+    while(chunk->next && chunk->next->is_free){
+        chunk->size += sizeof(block) + chunk->next->size;
+        chunk->next = chunk->next->next;
+    }
+
+}
+void destroy_memory_pool(){
+    free(memorypool->memory);
+    free(memorypool);
+}
+
 typedef struct {
     int color;
     int** board;
@@ -88,19 +157,19 @@ typedef struct {
 
 void freedata2(Data2* data){
     for (int i = 0; i < ROWS; i++) {
-        free(data->board[i]);
+        free_chunk(data->board[i]);
     }
-    free(data->board);
-    free(data->horizontal_info);
-    free(data->vertical_info);
+    free_chunk(data->board);
+    free_chunk(data->horizontal_info);
+    free_chunk(data->vertical_info);
 }
 
 void freedata(Data* data){
     for(int i = 0; i < ROWS; i++){
-        free(data->board[i]);
+        free_chunk(data->board[i]);
     }
-    free(data->board);
-    free(data->data1);
+    free_chunk(data->board);
+    free_chunk(data->data1);
 }
 
 int horizontal_points(void *arg){
@@ -108,9 +177,9 @@ int horizontal_points(void *arg){
 
     Data2* data = (Data2*)arg;
 
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -145,19 +214,19 @@ int horizontal_points(void *arg){
     }
     result = pc - user;
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
 
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 int vertical_points(void *arg){
     int length,pc = 0,user = 0,result;
 
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -194,18 +263,18 @@ int vertical_points(void *arg){
 
     result = pc - user;
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 int diagonal_points_45(void *arg){
     int length, pc = 0, user = 0, x, y, result;
 
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -245,18 +314,18 @@ int diagonal_points_45(void *arg){
 
     result = pc - user;
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 int diagonal_points_135(void *arg){
     int length, pc = 0, user = 0,x,y, result;
 
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -296,9 +365,9 @@ int diagonal_points_135(void *arg){
 
     result = pc - user;
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 int dfs(int i,int j,int** board,int color){
@@ -313,9 +382,9 @@ int dfs(int i,int j,int** board,int color){
 int marble_area_points(void *arg){
     Data2* data = (Data2*)arg;
     int user = 0, pc = 0, temp, result;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -338,17 +407,17 @@ int marble_area_points(void *arg){
     result = pc - user;
 
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 int place_area_points(void *arg){
     int pc = 0,user = 0,length = 0, result;
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
     }
 
@@ -372,22 +441,22 @@ int place_area_points(void *arg){
     }
     result = length;
     for (int i = 0;i < ROWS;i++){
-        free(board[i]);
+        free_chunk(board[i]);
     }
-    free(board);
+    free_chunk(board);
     return result;
 }
 Data2* copydata2(Data2* data){
     Data2* copy;
-    copy = (Data2*)malloc(sizeof(Data2));
+    copy = (Data2*)pool_malloc(sizeof(Data2));
     copy->color = data->color;
-    copy->board = (int**)malloc(ROWS * sizeof(int*));
+    copy->board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0; i < ROWS; i++) {
-        copy->board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        copy->board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(copy->board[i], data->board[i], COLUMNS * sizeof(int));
     }
-    copy->horizontal_info = (int*)malloc(ROWS * sizeof(int));
-    copy->vertical_info = (int*)malloc(COLUMNS * sizeof(int));
+    copy->horizontal_info = (int*)pool_malloc(ROWS * sizeof(int));
+    copy->vertical_info = (int*)pool_malloc(COLUMNS * sizeof(int));
     memcpy(copy->horizontal_info,data->horizontal_info,ROWS * sizeof(int));
     memcpy(copy->vertical_info,data->vertical_info,COLUMNS * sizeof(int));
     return copy;
@@ -395,15 +464,15 @@ Data2* copydata2(Data2* data){
 
 
 int calculate(int color, int** board){
-    Data2* data = (Data2*)malloc(sizeof(Data2));
+    Data2* data = (Data2*)pool_malloc(sizeof(Data2));
     data->color = color;
-    data->board = (int**)malloc(ROWS * sizeof(int*));
+    data->board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (int i = 0;i < ROWS;i++){
-        data->board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        data->board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(data->board[i],board[i],COLUMNS * sizeof(int));
     }
-    data->horizontal_info = (int*)malloc(ROWS * sizeof(int));
-    data->vertical_info = (int*)malloc(COLUMNS * sizeof(int));
+    data->horizontal_info = (int*)pool_malloc(ROWS * sizeof(int));
+    data->vertical_info = (int*)pool_malloc(COLUMNS * sizeof(int));
     for(int i = 0;i < ROWS;i++){
         data->horizontal_info[i] = 0;
         data->vertical_info[i] = 0;
@@ -418,7 +487,7 @@ int calculate(int color, int** board){
             }
         }
     }
-    Data2** parray = (Data2**)malloc(calcfuncsize * sizeof(Data2*));
+    Data2** parray = (Data2**)pool_malloc(calcfuncsize * sizeof(Data2*));
     for(int i = 0;i < calcfuncsize;i++){
         parray[i] = copydata2(data);
     }
@@ -427,11 +496,11 @@ int calculate(int color, int** board){
 
     for(int i = 0;i < calcfuncsize; i++){
         freedata2(parray[i]);
-        free(parray[i]);
+        free_chunk(parray[i]);
     }
-    free(parray);
+    free_chunk(parray);
     freedata2(data);
-    free(data);
+    free_chunk(data);
     return sum;
 }
 
@@ -447,7 +516,7 @@ int which(int x, int y){
 }
 int* findvalid(Data* data){
     int info1, info2, length = 0;
-    int* result = (int*)malloc(2 * directionsize * sizeof(int));
+    int* result = (int*)pool_malloc(2 * directionsize * sizeof(int));
     printf("BEFORE INFO!-1\n");
     if (data->data1[3] > -1 && data->data1[4] > -1){
         info1 = newnode[data->data1[3]][data->data1[4]]->frame;
@@ -479,9 +548,9 @@ int* findvalid(Data* data){
 }
 
 bool check_done_my(int** board,int x, int y){
-    int** copy = (int**)malloc(ROWS * sizeof(int*));
+    int** copy = (int**)pool_malloc(ROWS * sizeof(int*));
     for(int i = 0; i < ROWS; i++) {
-        copy[i] = (int*)malloc(COLUMNS * sizeof(int));
+        copy[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(copy[i], board[i], COLUMNS * sizeof(int));
     }
     copy[x][y] = 1;
@@ -492,9 +561,9 @@ bool check_done_my(int** board,int x, int y){
         perror("Socket creation failed");
         // Clean up memory before returning
         for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+            free_chunk(copy[i]);
         }
-        free(copy);
+        free_chunk(copy);
         return 0; // Return 0 for failure
     }
 
@@ -505,9 +574,9 @@ bool check_done_my(int** board,int x, int y){
         close(client_fd);
         // Clean up memory
         for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+            free_chunk(copy[i]);
         }
-        free(copy);
+        free_chunk(copy);
         return 0;
     }
 
@@ -528,9 +597,9 @@ bool check_done_my(int** board,int x, int y){
         close(client_fd);
         // Clean up memory
         for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+            free_chunk(copy[i]);
         }
-        free(copy);
+        free_chunk(copy);
         return 0;
     }
 
@@ -550,9 +619,9 @@ bool check_done_my(int** board,int x, int y){
         close(client_fd);
         // Clean up memory
         for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+            free_chunk(copy[i]);
         }
-        free(copy);
+        free_chunk(copy);
         return 0;
     }
     printf("Board sent to server\n");
@@ -564,9 +633,9 @@ bool check_done_my(int** board,int x, int y){
         close(client_fd);
         // Clean up memory
         for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+            free_chunk(copy[i]);
         }
-        free(copy);
+        free_chunk(copy);
         return 0;
     }
     printf("Server response: %d\n", result);
@@ -574,9 +643,9 @@ bool check_done_my(int** board,int x, int y){
     // Close connection and clean up
     close(client_fd);
     for(int i = 0; i < ROWS; i++) {
-        free(copy[i]);
+        free_chunk(copy[i]);
     }
-    free(copy);
+    free_chunk(copy);
 
     return result ? 1 : 0;
 }
@@ -592,6 +661,7 @@ int piece_count(int** board){
     }
     return count;
 }
+
 int moves[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
 int surrounding_piece_count(int** board, int x, int y){
     int result = 0;
@@ -603,10 +673,11 @@ int surrounding_piece_count(int** board, int x, int y){
     }
     return result;
 }
+
 int* search(void *arg){
     Data* data = (Data*)arg;
     if (data->data1[2] == 0){
-        int* result = (int*)malloc(sizeof(int));
+        int* result = (int*)pool_malloc(sizeof(int));
         *result = calculate(2,data->board);
         return result;
     }
@@ -620,15 +691,15 @@ int* search(void *arg){
     }else{
         maximum = 1000000;
     }
-    Data** datas = (Data**)malloc(directionsize * sizeof(Data*));
+    Data** datas = (Data**)pool_malloc(directionsize * sizeof(Data*));
 
     int* result;
     if(data->ret){
-        result = (int*)malloc(2 * sizeof(int));
+        result = (int*)pool_malloc(2 * sizeof(int));
         result[0] = -1;
         result[1] = -1;
     }else{
-        result = (int*)malloc(sizeof(int));
+        result = (int*)pool_malloc(sizeof(int));
         *result = -1;
     }
 
@@ -698,8 +769,8 @@ int* search(void *arg){
             got_into = true;
             data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = data->data1[5];
 
-            datas[k] = (Data*)malloc(sizeof(Data));
-            datas[k]->data1 = (int*)malloc(data_length * sizeof(int));
+            datas[k] = (Data*)pool_malloc(sizeof(Data));
+            datas[k]->data1 = (int*)pool_malloc(data_length * sizeof(int));
             datas[k]->data1[0] = data->data1[0] + directions_local[k][0];
             datas[k]->data1[1] = data->data1[1] + directions_local[k][1];
             datas[k]->data1[2] = data->data1[2] - 1;
@@ -710,10 +781,18 @@ int* search(void *arg){
             datas[k]->data1[7] = data->data1[7];
             datas[k]->is_max = !data->is_max;
             datas[k]->ret = false;
-            datas[k]->board = (int**)malloc(ROWS * sizeof(int*));
+            datas[k]->board = (int**)pool_malloc(ROWS * sizeof(int*));
             for (int i = 0; i < ROWS; i++) {
-                datas[k]->board[i] = (int*)malloc(COLUMNS * sizeof(int));
-                memcpy(datas[k]->board[i], data->board[i], COLUMNS * sizeof(int));
+                datas[k]->board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
+                if (datas[k]->board[i] == NULL) {
+                    printf("Error: datas[%d]->board[%d] is not allocated.\n", k, i);
+                    datas[k]->board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
+                }
+                if (data->board[i] != NULL) {
+                    memcpy(datas[k]->board[i], data->board[i], COLUMNS * sizeof(int));
+                } else {
+                    fprintf(stderr, "Error: data->board[%d] is not allocated.\n", i);
+                }
             }
 
             int* temppp = search((void*)datas[k]);
@@ -731,8 +810,8 @@ int* search(void *arg){
 
                 if (data->data1[6] >= data->data1[7]){
                     freedata(datas[k]);
-                    free(datas[k]);
-                    free(temppp);
+                    free_chunk(datas[k]);
+                    free_chunk(temppp);
                     data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
 
                     break;
@@ -750,15 +829,15 @@ int* search(void *arg){
                 }
                 if (data->data1[7] <= data->data1[6]){
                     freedata(datas[k]);
-                    free(datas[k]);
-                    free(temppp);
+                    free_chunk(datas[k]);
+                    free_chunk(temppp);
                     data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
                     break;
                 }
             }
             freedata(datas[k]);
-            free(datas[k]);
-            free(temppp);
+            free_chunk(datas[k]);
+            free_chunk(temppp);
             data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = 0;
 
     }
@@ -766,7 +845,7 @@ int* search(void *arg){
         maximum = calculate(2,data->board);
     }
 
-    free(datas);
+    free_chunk(datas);
     if (data->ret){
         return result;
     }
@@ -787,14 +866,14 @@ int* best_place(int x, int y,int step, int lx, int ly){
     }
     else{
         int* temp;
-        temp = (int*)malloc(2 * sizeof(int));
+        temp = (int*)pool_malloc(2 * sizeof(int));
         temp[0] = -1;
         temp[1] = -1;
         return temp;
     }
     int* temp;
     Data data;
-    data.data1 = (int*)malloc(data_length * sizeof(int));
+    data.data1 = (int*)pool_malloc(data_length * sizeof(int));
     data.data1[0] = x;
     data.data1[1] = y;
     data.data1[2] = step;
@@ -805,9 +884,9 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.data1[7] = 999999999;
     data.is_max = true;
     data.ret = true;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = (int**)pool_malloc(ROWS * sizeof(int*));
     for (i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        board[i] = (int*)pool_malloc(COLUMNS * sizeof(int));
         memcpy(board[i],board2[i], COLUMNS * sizeof(int));
     }
 
@@ -841,6 +920,7 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
+    create_memory_pool(3221225472);
     board2 = (int**)malloc(ROWS * sizeof(int*));
     for(int i = 0;i < ROWS;i++){
         board2[i] = (int*)malloc(COLUMNS * sizeof(int));
@@ -859,5 +939,6 @@ int main(){
             newnode[i][j]->frame = which(i,j);
         }
     }
+    
     return 0; // ADD FINDVALID FUNCTION, FIND THE VALID MOVES AND RUN THEM
 }
