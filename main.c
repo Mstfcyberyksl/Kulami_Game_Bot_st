@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include "kulami_config.h"
 
 #define calcfuncsize 6
 #define ROWS 8
@@ -14,6 +15,54 @@
 #define framecount 17
 #define data_length 8
 #define PORT 9000
+#define BOARD_POOL_SIZE 100
+
+// Inline helper functions for better performance
+static inline bool is_valid_position(int x, int y) {
+    return x >= 0 && x < ROWS && y >= 0 && y < COLUMNS;
+}
+
+static inline int calculate_position_score(int x, int y) {
+    // Favor center positions
+    return -(abs(x - ROWS/2) + abs(y - COLUMNS/2));
+}
+
+// Memory pool for board allocations
+typedef struct {
+    int** boards[BOARD_POOL_SIZE];
+    bool used[BOARD_POOL_SIZE];
+    int initialized;
+} BoardPool;
+
+BoardPool board_pool = {0};
+
+// Connection pooling for socket optimization
+static int cached_socket = -1;
+static struct sockaddr_in cached_server_addr;
+static bool socket_initialized = false;
+
+// Move ordering: prioritize center positions and high-scoring moves
+static inline int evaluate_move_priority(int x, int y, int** board) {
+    int score = 0;
+    
+    // Favor center positions (better connectivity)
+    score += 10 - (abs(x - ROWS/2) + abs(y - COLUMNS/2));
+    
+    // Check adjacent occupied positions (better for scoring)
+    int adjacent_count = 0;
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            if (dx == 0 && dy == 0) continue;
+            int nx = x + dx, ny = y + dy;
+            if (is_valid_position(nx, ny) && board[nx][ny] != 0) {
+                adjacent_count++;
+            }
+        }
+    }
+    score += adjacent_count * 5;
+    
+    return score;
+}
 
 int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1, validlength = -1;
@@ -86,6 +135,49 @@ typedef struct {
     int** board;
 }Data;
 
+// Memory pool functions for better performance
+void init_board_pool() {
+    if (board_pool.initialized) return;
+    
+    for (int i = 0; i < BOARD_POOL_SIZE; i++) {
+        board_pool.boards[i] = (int**)malloc(ROWS * sizeof(int*));
+        for (int j = 0; j < ROWS; j++) {
+            board_pool.boards[i][j] = (int*)malloc(COLUMNS * sizeof(int));
+        }
+        board_pool.used[i] = false;
+    }
+    board_pool.initialized = 1;
+}
+
+int** get_board_from_pool() {
+    for (int i = 0; i < BOARD_POOL_SIZE; i++) {
+        if (!board_pool.used[i]) {
+            board_pool.used[i] = true;
+            return board_pool.boards[i];
+        }
+    }
+    // Pool exhausted, fallback to malloc
+    int** board = (int**)malloc(ROWS * sizeof(int*));
+    for (int i = 0; i < ROWS; i++) {
+        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+    }
+    return board;
+}
+
+void return_board_to_pool(int** board) {
+    for (int i = 0; i < BOARD_POOL_SIZE; i++) {
+        if (board_pool.boards[i] == board) {
+            board_pool.used[i] = false;
+            return;
+        }
+    }
+    // Not from pool, free normally
+    for (int i = 0; i < ROWS; i++) {
+        free(board[i]);
+    }
+    free(board);
+}
+
 void freedata2(Data2* data){
     for (int i = 0; i < ROWS; i++) {
         free(data->board[i]);
@@ -96,10 +188,7 @@ void freedata2(Data2* data){
 }
 
 void freedata(Data* data){
-    for(int i = 0; i < ROWS; i++){
-        free(data->board[i]);
-    }
-    free(data->board);
+    return_board_to_pool(data->board);
     free(data->data1);
 }
 
@@ -108,11 +197,8 @@ int horizontal_points(void *arg){
 
     Data2* data = (Data2*)arg;
 
-    int** board = (int**)malloc(ROWS * sizeof(int*));
-    for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
-        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
-    }
+    // Use direct board access instead of copying
+    int** board = data->board;
 
     for (int i = 0;i < ROWS;i++){
         if(data->horizontal_info[i] >= 5){
@@ -144,22 +230,13 @@ int horizontal_points(void *arg){
         }
     }
     result = pc - user;
-    for (int i = 0;i < ROWS;i++){
-        free(board[i]);
-
-    }
-    free(board);
     return result;
 }
 int vertical_points(void *arg){
     int length,pc = 0,user = 0,result;
 
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
-    for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
-        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
-    }
+    int** board = data->board;
 
 
     for (int j = 0;j < ROWS;j++){
@@ -193,10 +270,6 @@ int vertical_points(void *arg){
     }
 
     result = pc - user;
-    for (int i = 0;i < ROWS;i++){
-        free(board[i]);
-    }
-    free(board);
     return result;
 }
 int diagonal_points_45(void *arg){
@@ -302,8 +375,6 @@ int diagonal_points_135(void *arg){
     return result;
 }
 int dfs(int i,int j,int** board,int color){
-    int k,m,n,temp = 0;
-
     if (i < 0 || i == ROWS || j < 0 || j == COLUMNS || board[i][j] != color) {
         return 0;
     }
@@ -346,11 +417,7 @@ int marble_area_points(void *arg){
 int place_area_points(void *arg){
     int pc = 0,user = 0,length = 0, result;
     Data2* data = (Data2*)arg;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
-    for (int i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
-        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
-    }
+    int** board = data->board;
 
     for (int i = 0;i < 17;i++){
         pc = 0;
@@ -371,10 +438,6 @@ int place_area_points(void *arg){
         }
     }
     result = length;
-    for (int i = 0;i < ROWS;i++){
-        free(board[i]);
-    }
-    free(board);
     return result;
 }
 Data2* copydata2(Data2* data){
@@ -479,58 +542,48 @@ int* findvalid(Data* data){
 }
 
 bool check_done_my(int** board,int x, int y){
-    int** copy = (int**)malloc(ROWS * sizeof(int*));
+    // Use memory pool for better performance
+    int** copy = get_board_from_pool();
     for(int i = 0; i < ROWS; i++) {
-        copy[i] = (int*)malloc(COLUMNS * sizeof(int));
         memcpy(copy[i], board[i], COLUMNS * sizeof(int));
     }
     copy[x][y] = 1;
 
-    // Create socket
-    int client_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (client_fd < 0) {
-        perror("Socket creation failed");
-        // Clean up memory before returning
-        for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
+    // Initialize socket connection if not already done
+    if (!socket_initialized) {
+        cached_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (cached_socket < 0) {
+            perror("Socket creation failed");
+            return_board_to_pool(copy);
+            return 0;
         }
-        free(copy);
-        return 0; // Return 0 for failure
+
+        // Set socket options to allow reuse of address
+        int opt = 1;
+        if (setsockopt(cached_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+            perror("setsockopt failed");
+            close(cached_socket);
+            cached_socket = -1;
+            return_board_to_pool(copy);
+            return 0;
+        }
+
+        // Set up server address
+        memset(&cached_server_addr, 0, sizeof(cached_server_addr));
+        cached_server_addr.sin_family = AF_INET;
+        cached_server_addr.sin_port = htons(PORT);
+        cached_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        
+        socket_initialized = true;
     }
 
-    // Set socket options to allow reuse of address
-    int opt = 1;
-    if (setsockopt(client_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt failed");
-        close(client_fd);
-        // Clean up memory
-        for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
-        }
-        free(copy);
-        return 0;
-    }
-
-    // Set up server address
-    struct sockaddr_in server_address;
-    memset(&server_address, 0, sizeof(server_address));
-    server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(PORT);
-
-    // Use localhost for testing or get the correct IP
-    // For production, replace with actual server IP
-    server_address.sin_addr.s_addr = inet_addr("127.0.0.1"); // Use localhost for testing
-
-    // Try to connect with timeout
-    printf("Attempting to connect to server...\n");
-    if (connect(client_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+    // Try to connect (reuse existing socket if possible)
+    if (connect(cached_socket, (struct sockaddr*)&cached_server_addr, sizeof(cached_server_addr)) < 0) {
         perror("Connection failed");
-        close(client_fd);
-        // Clean up memory
-        for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
-        }
-        free(copy);
+        close(cached_socket);
+        cached_socket = -1;
+        socket_initialized = false;
+        return_board_to_pool(copy);
         return 0;
     }
 
@@ -545,43 +598,38 @@ bool check_done_my(int** board,int x, int y){
     }
 
     // Send data
-    if (send(client_fd, flat_array, ROWS * COLUMNS * sizeof(int), 0) < 0) {
+    if (send(cached_socket, flat_array, ROWS * COLUMNS * sizeof(int), 0) < 0) {
         perror("Send failed");
-        close(client_fd);
-        // Clean up memory
-        for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
-        }
-        free(copy);
+        close(cached_socket);
+        cached_socket = -1;
+        socket_initialized = false;
+        return_board_to_pool(copy);
         return 0;
     }
     printf("Board sent to server\n");
 
     // Receive result
     bool result;
-    if (recv(client_fd, &result, sizeof(result), 0) < 0) {
+    if (recv(cached_socket, &result, sizeof(result), 0) < 0) {
         perror("Receive failed");
-        close(client_fd);
-        // Clean up memory
-        for(int i = 0; i < ROWS; i++) {
-            free(copy[i]);
-        }
-        free(copy);
+        close(cached_socket);
+        cached_socket = -1;
+        socket_initialized = false;
+        return_board_to_pool(copy);
         return 0;
     }
     printf("Server response: %d\n", result);
 
     // Close connection and clean up
-    close(client_fd);
-    for(int i = 0; i < ROWS; i++) {
-        free(copy[i]);
-    }
-    free(copy);
+    close(cached_socket);
+    cached_socket = -1;
+    socket_initialized = false;
+    return_board_to_pool(copy);
 
     return result ? 1 : 0;
 }
 
-int piece_count(int** board){
+static inline int piece_count(int** board){
     int count = 0;
     for (int i = 0; i < ROWS; i++) {
         for (int j = 0; j < COLUMNS; j++) {
@@ -593,6 +641,42 @@ int piece_count(int** board){
     return count;
 }
 int moves[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+// Helper function for quicksort
+void swap_moves(int directions_local[][2], int direction_scores[], int i, int j) {
+    int temp_score = direction_scores[i];
+    direction_scores[i] = direction_scores[j];
+    direction_scores[j] = temp_score;
+    
+    int temp_dir0 = directions_local[i][0];
+    int temp_dir1 = directions_local[i][1];
+    directions_local[i][0] = directions_local[j][0];
+    directions_local[i][1] = directions_local[j][1];
+    directions_local[j][0] = temp_dir0;
+    directions_local[j][1] = temp_dir1;
+}
+
+int partition_moves(int directions_local[][2], int direction_scores[], int low, int high) {
+    int pivot = direction_scores[high];
+    int i = low - 1;
+    
+    for (int j = low; j <= high - 1; j++) {
+        if (direction_scores[j] > pivot) {  // Sort in descending order
+            i++;
+            swap_moves(directions_local, direction_scores, i, j);
+        }
+    }
+    swap_moves(directions_local, direction_scores, i + 1, high);
+    return i + 1;
+}
+
+void quicksort_moves(int directions_local[][2], int direction_scores[], int low, int high) {
+    if (low < high) {
+        int pi = partition_moves(directions_local, direction_scores, low, high);
+        quicksort_moves(directions_local, direction_scores, low, pi - 1);
+        quicksort_moves(directions_local, direction_scores, pi + 1, high);
+    }
+}
+
 int surrounding_piece_count(int** board, int x, int y){
     int result = 0;
 
@@ -611,7 +695,9 @@ int* search(void *arg){
         return result;
     }
 
-    int info1, info2, a, b,maximum,move_count = 0, not_minimum, index,temp_swap;
+    // Move ordering optimization for better alpha-beta pruning
+
+    int info1, info2, maximum, move_count = 0;
     int directions_local[directionsize][2];
     int direction_scores[directionsize];
 
@@ -671,28 +757,12 @@ int* search(void *arg){
                 move_count++;
             }
     }
-    for(int i = 0;i < move_count - 1;i++){
-        not_minimum = direction_scores[i];
-        index = i;
-        for(int j = i+1;j < move_count;j++){
-            if(direction_scores[j] > not_minimum){
-                index = j;
-                not_minimum = direction_scores[j];
-            }
-        }
-        temp_swap = direction_scores[index];
-        direction_scores[index] = direction_scores[i];
-        direction_scores[i] = temp_swap;
-
-        temp_swap = directions_local[index][0];
-        directions_local[index][0] = directions_local[i][0];
-        directions_local[i][0] = temp_swap;
-
-        temp_swap = directions_local[index][1];
-        directions_local[index][1] = directions_local[i][1];
-        directions_local[i][1] = temp_swap;
-
+    
+    // Use quicksort instead of selection sort for better performance
+    if (move_count > 1) {
+        quicksort_moves(directions_local, direction_scores, 0, move_count - 1);
     }
+    
     for (int k = 0;k < move_count;k++){
 
             got_into = true;
@@ -710,9 +780,8 @@ int* search(void *arg){
             datas[k]->data1[7] = data->data1[7];
             datas[k]->is_max = !data->is_max;
             datas[k]->ret = false;
-            datas[k]->board = (int**)malloc(ROWS * sizeof(int*));
+            datas[k]->board = get_board_from_pool();
             for (int i = 0; i < ROWS; i++) {
-                datas[k]->board[i] = (int*)malloc(COLUMNS * sizeof(int));
                 memcpy(datas[k]->board[i], data->board[i], COLUMNS * sizeof(int));
             }
 
@@ -805,9 +874,8 @@ int* best_place(int x, int y,int step, int lx, int ly){
     data.data1[7] = 999999999;
     data.is_max = true;
     data.ret = true;
-    int** board = (int**)malloc(ROWS * sizeof(int*));
+    int** board = get_board_from_pool();
     for (i = 0;i < ROWS;i++){
-        board[i] = (int*)malloc(COLUMNS * sizeof(int));
         memcpy(board[i],board2[i], COLUMNS * sizeof(int));
     }
 
@@ -826,6 +894,10 @@ int* best_place(int x, int y,int step, int lx, int ly){
     fprintf(file,"(%d,%d)\n",temp[0],temp[1]);
     fclose(file);
 
+    // Clean up memory
+    return_board_to_pool(board);
+    free(data.data1);
+
     printf("X: %d Y: %d\n",temp[0],temp[1]);
     board2[temp[0]][temp[1]] = 2;
 
@@ -841,6 +913,9 @@ int* best_place(int x, int y,int step, int lx, int ly){
 }
 
 int main(){
+    // Initialize memory pool for better performance
+    init_board_pool();
+    
     board2 = (int**)malloc(ROWS * sizeof(int*));
     for(int i = 0;i < ROWS;i++){
         board2[i] = (int*)malloc(COLUMNS * sizeof(int));

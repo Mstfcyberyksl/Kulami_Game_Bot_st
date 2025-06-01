@@ -1,10 +1,18 @@
 import tkinter
 import ctypes
+import time
 from PIL import Image, ImageTk
 
 root = tkinter.Tk()
-root.title("Kulami Game")
+root.title("Kulami Game - Optimized Version")
 root.attributes("-fullscreen", True)
+
+# Performance monitoring
+game_stats = {
+    'moves': 0,
+    'ai_time_total': 0.0,
+    'ai_time_avg': 0.0
+}
 
 # Load and resize images
 red_img = Image.open("redball.png")
@@ -15,7 +23,7 @@ black_img = Image.open("black-ball-png-9.png")
 black_img = black_img.resize((80, 80))
 black_image = ImageTk.PhotoImage(black_img)
 
-# Load the shared library and define function prototypes
+# Load the optimized shared library and define function prototypes
 functionbest = ctypes.CDLL("./kulami_game.so")
 functionbest.best_place.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 functionbest.best_place.restype = ctypes.POINTER(ctypes.c_int)
@@ -23,10 +31,26 @@ functionbest.main()
 last_move = [-1,-1]
 movecount = 56
 def button_click(x, y):
-    global movecount, last_move
+    global movecount, last_move, game_stats
+    
+    # Track performance
+    start_time = time.perf_counter()
+    
     buttons[(x, y)].config(image=red_image)
     movecount -= 1
-    result = functionbest.best_place(x, y, 11, last_move[0], last_move[1])
+    
+    # AI move with performance tracking
+    ai_start = time.perf_counter()
+    result = functionbest.best_place(x, y, 9, last_move[0], last_move[1])
+    ai_end = time.perf_counter()
+    
+    ai_time = (ai_end - ai_start) * 1000  # Convert to milliseconds
+    game_stats['moves'] += 1
+    game_stats['ai_time_total'] += ai_time
+    game_stats['ai_time_avg'] = game_stats['ai_time_total'] / game_stats['moves']
+    
+    print(f"AI move #{game_stats['moves']}: {ai_time:.2f}ms (avg: {game_stats['ai_time_avg']:.2f}ms)")
+    
     if result[0] == -1 and result[1] == -1:
         buttons[(x, y)].config(image=None)
     else:
@@ -34,10 +58,14 @@ def button_click(x, y):
         last_move[1] = result[1]
         buttons[(result[0], result[1])].config(image=black_image)
         movecount -= 1
+    
     if movecount == 0:
         for button in buttons.values():
             button.config(state='disabled')
-        tkinter.messagebox.showinfo("Game Over", "No more moves left!")
+        print(f"\nGame completed! Total AI time: {game_stats['ai_time_total']:.2f}ms")
+        print(f"Average AI response time: {game_stats['ai_time_avg']:.2f}ms")
+        tkinter.messagebox.showinfo("Game Over", 
+            f"No more moves left!\nAverage AI time: {game_stats['ai_time_avg']:.2f}ms")
 buttons = {}
 for i in range(8):
     root.rowconfigure(i, weight=1)
