@@ -4,15 +4,8 @@ import time
 from PIL import Image, ImageTk
 
 root = tkinter.Tk()
-root.title("Kulami Game - Optimized Version")
+root.title("Kulami Game")
 root.attributes("-fullscreen", True)
-
-# Performance monitoring
-game_stats = {
-    'moves': 0,
-    'ai_time_total': 0.0,
-    'ai_time_avg': 0.0
-}
 
 # Load and resize images
 red_img = Image.open("redball.png")
@@ -23,53 +16,91 @@ black_img = Image.open("black-ball-png-9.png")
 black_img = black_img.resize((80, 80))
 black_image = ImageTk.PhotoImage(black_img)
 
-# Load the optimized shared library and define function prototypes
+# Load the shared library and define function prototypes
 functionbest = ctypes.CDLL("./kulami_game.so")
 functionbest.best_place.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
 functionbest.best_place.restype = ctypes.POINTER(ctypes.c_int)
 functionbest.main()
-last_move = [-1,-1]
-movecount = 56
+
+# AI timing variables
+last_move = [-1, -1]
+move_times = []  # List to store all move times
+move_count = 0   # Counter for total moves
+
+def print_timing_stats():
+    """Print current move timing statistics"""
+    if not move_times:
+        print("No AI moves made yet.")
+        return
+
+    current_time = move_times[-1]
+    average_time = sum(move_times) / len(move_times)
+    total_time = sum(move_times)
+
+    print(f"\n=== AI Move Timing Statistics ===")
+    print(f"Last move time: {current_time:.3f} seconds")
+    print(f"Average move time: {average_time:.3f} seconds")
+    print(f"Total moves made: {len(move_times)}")
+    print(f"Total thinking time: {total_time:.3f} seconds")
+    print(f"Fastest move: {min(move_times):.3f} seconds")
+    print(f"Slowest move: {max(move_times):.3f} seconds")
+    print("=" * 35)
+
 def button_click(x, y):
-    global movecount, last_move, game_stats
-    
-    # Track performance
-    start_time = time.perf_counter()
-    
+    # Change clicked button to red, then get best move and mark it black
+    global move_count
     buttons[(x, y)].config(image=red_image)
-    movecount -= 1
-    
-    # AI move with performance tracking
-    ai_start = time.perf_counter()
-    result = functionbest.best_place(x, y, 9, last_move[0], last_move[1])
-    ai_end = time.perf_counter()
-    
-    ai_time = (ai_end - ai_start) * 1000  # Convert to milliseconds
-    game_stats['moves'] += 1
-    game_stats['ai_time_total'] += ai_time
-    game_stats['ai_time_avg'] = game_stats['ai_time_total'] / game_stats['moves']
-    
-    print(f"AI move #{game_stats['moves']}: {ai_time:.2f}ms (avg: {game_stats['ai_time_avg']:.2f}ms)")
-    
+
+    # Time the AI move
+    start_time = time.time()
+    result = functionbest.best_place(x, y, 13, last_move[0], last_move[1])
+    end_time = time.time()
+
+    # Calculate and store timing
+    move_time = end_time - start_time
+    move_times.append(move_time)
+    move_count += 1
+
     if result[0] == -1 and result[1] == -1:
         buttons[(x, y)].config(image=None)
+        print(f"AI found no valid move (took {move_time:.3f} seconds)")
     else:
         last_move[0] = result[0]
         last_move[1] = result[1]
         buttons[(result[0], result[1])].config(image=black_image)
-        movecount -= 1
-    
-    if movecount == 0:
-        for button in buttons.values():
-            button.config(state='disabled')
-        print(f"\nGame completed! Total AI time: {game_stats['ai_time_total']:.2f}ms")
-        print(f"Average AI response time: {game_stats['ai_time_avg']:.2f}ms")
-        tkinter.messagebox.showinfo("Game Over", 
-            f"No more moves left!\nAverage AI time: {game_stats['ai_time_avg']:.2f}ms")
+        print(f"AI moved to ({result[0]}, {result[1]}) in {move_time:.3f} seconds")
+
+    # Print timing statistics after each move
+    print_timing_stats()
+
+# Add a keyboard shortcut to manually print stats
+def on_key_press(event):
+    if event.char == 's' or event.char == 'S':
+        print_timing_stats()
+    elif event.char == 'r' or event.char == 'R':
+        # Reset timing statistics
+        global move_times, move_count
+        move_times.clear()
+        move_count = 0
+        print("AI timing statistics reset.")
+    elif event.char == 'q' or event.char == 'Q':
+        # Quit the application
+        root.quit()
+
+root.bind('<KeyPress>', on_key_press)
+root.focus_set()  # Make sure the window can receive key events
+
+
+
+def button_click_with_status(x, y):
+    button_click(x, y)
+
+
 buttons = {}
 for i in range(8):
     root.rowconfigure(i, weight=1)
     root.columnconfigure(i, weight=1)
+
 
 # Frame1: Top-left 2x2 area -> logical coordinates: (0,0), (0,1), (1,0), (1,1)
 frame1 = tkinter.Frame(root, bd=10, relief='ridge')
@@ -77,16 +108,16 @@ frame1.grid(row=0, column=0, rowspan=2, columnspan=2, sticky="nsew")
 for i in range(2):
     frame1.rowconfigure(i, weight=1)
     frame1.columnconfigure(i, weight=1)
-button1 = tkinter.Button(frame1, image=None, command=lambda: button_click(0, 0))
+button1 = tkinter.Button(frame1, image=None, command=lambda: button_click_with_status(0, 0))
 button1.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(0, 0)] = button1
-button2 = tkinter.Button(frame1, image=None, command=lambda: button_click(0, 1))
+button2 = tkinter.Button(frame1, image=None, command=lambda: button_click_with_status(0, 1))
 button2.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(0, 1)] = button2
-button3 = tkinter.Button(frame1, image=None, command=lambda: button_click(1, 0))
+button3 = tkinter.Button(frame1, image=None, command=lambda: button_click_with_status(1, 0))
 button3.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(1, 0)] = button3
-button4 = tkinter.Button(frame1, image=None, command=lambda: button_click(1, 1))
+button4 = tkinter.Button(frame1, image=None, command=lambda: button_click_with_status(1, 1))
 button4.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(1, 1)] = button4
 
@@ -97,22 +128,22 @@ for i in range(2):
     frame2.rowconfigure(i, weight=1)
 for i in range(3):
     frame2.columnconfigure(i, weight=1)
-button5 = tkinter.Button(frame2, image=None, command=lambda: button_click(0, 2))
+button5 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(0, 2))
 button5.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(0, 2)] = button5
-button6 = tkinter.Button(frame2, image=None, command=lambda: button_click(0, 3))
+button6 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(0, 3))
 button6.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(0, 3)] = button6
-button7 = tkinter.Button(frame2, image=None, command=lambda: button_click(0, 4))
+button7 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(0, 4))
 button7.grid(row=0, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(0, 4)] = button7
-button8 = tkinter.Button(frame2, image=None, command=lambda: button_click(1, 2))
+button8 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(1, 2))
 button8.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(1, 2)] = button8
-button9 = tkinter.Button(frame2, image=None, command=lambda: button_click(1, 3))
+button9 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(1, 3))
 button9.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(1, 3)] = button9
-button10 = tkinter.Button(frame2, image=None, command=lambda: button_click(1, 4))
+button10 = tkinter.Button(frame2, image=None, command=lambda: button_click_with_status(1, 4))
 button10.grid(row=1, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(1, 4)] = button10
 
@@ -124,22 +155,22 @@ for i in range(3):
     frame3.rowconfigure(i, weight=1)
 for i in range(2):
     frame3.columnconfigure(i, weight=1)
-button11 = tkinter.Button(frame3, image=None, command=lambda: button_click(0, 5))
+button11 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(0, 5))
 button11.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(0, 5)] = button11
-button12 = tkinter.Button(frame3, image=None, command=lambda: button_click(0, 6))
+button12 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(0, 6))
 button12.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(0, 6)] = button12
-button13 = tkinter.Button(frame3, image=None, command=lambda: button_click(1, 5))
+button13 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(1, 5))
 button13.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(1, 5)] = button13
-button14 = tkinter.Button(frame3, image=None, command=lambda: button_click(1, 6))
+button14 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(1, 6))
 button14.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(1, 6)] = button14
-button15 = tkinter.Button(frame3, image=None, command=lambda: button_click(2, 5))
+button15 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(2, 5))
 button15.grid(row=2, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(2, 5)] = button15
-button16 = tkinter.Button(frame3, image=None, command=lambda: button_click(2, 6))
+button16 = tkinter.Button(frame3, image=None, command=lambda: button_click_with_status(2, 6))
 button16.grid(row=2, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(2, 6)] = button16
 
@@ -149,13 +180,13 @@ frame4.grid(row=0, column=7, rowspan=3, columnspan=1, sticky="nsew")
 for i in range(3):
     frame4.rowconfigure(i, weight=1)
 frame4.columnconfigure(0, weight=1)
-button17 = tkinter.Button(frame4, image=None, command=lambda: button_click(0, 7))
+button17 = tkinter.Button(frame4, image=None, command=lambda: button_click_with_status(0, 7))
 button17.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(0, 7)] = button17
-button18 = tkinter.Button(frame4, image=None, command=lambda: button_click(1, 7))
+button18 = tkinter.Button(frame4, image=None, command=lambda: button_click_with_status(1, 7))
 button18.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(1, 7)] = button18
-button19 = tkinter.Button(frame4, image=None, command=lambda: button_click(2, 7))
+button19 = tkinter.Button(frame4, image=None, command=lambda: button_click_with_status(2, 7))
 button19.grid(row=2, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(2, 7)] = button19
 
@@ -165,10 +196,10 @@ frame5.grid(row=2, column=0, rowspan=2, columnspan=1, sticky="nsew")
 frame5.rowconfigure(0, weight=1)
 frame5.rowconfigure(1, weight=1)
 frame5.columnconfigure(0, weight=1)
-button20 = tkinter.Button(frame5, image=None, command=lambda: button_click(2, 0))
+button20 = tkinter.Button(frame5, image=None, command=lambda: button_click_with_status(2, 0))
 button20.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(2, 0)] = button20
-button21 = tkinter.Button(frame5, image=None, command=lambda: button_click(3, 0))
+button21 = tkinter.Button(frame5, image=None, command=lambda: button_click_with_status(3, 0))
 button21.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(3, 0)] = button21
 
@@ -179,16 +210,16 @@ for i in range(2):
     frame6.rowconfigure(i, weight=1)
 for i in range(2):
     frame6.columnconfigure(i, weight=1)
-button22 = tkinter.Button(frame6, image=None, command=lambda: button_click(2, 1))
+button22 = tkinter.Button(frame6, image=None, command=lambda: button_click_with_status(2, 1))
 button22.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(2, 1)] = button22
-button23 = tkinter.Button(frame6, image=None, command=lambda: button_click(2, 2))
+button23 = tkinter.Button(frame6, image=None, command=lambda: button_click_with_status(2, 2))
 button23.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(2, 2)] = button23
-button24 = tkinter.Button(frame6, image=None, command=lambda: button_click(3, 1))
+button24 = tkinter.Button(frame6, image=None, command=lambda: button_click_with_status(3, 1))
 button24.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(3, 1)] = button24
-button25 = tkinter.Button(frame6, image=None, command=lambda: button_click(3, 2))
+button25 = tkinter.Button(frame6, image=None, command=lambda: button_click_with_status(3, 2))
 button25.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(3, 2)] = button25
 
@@ -198,10 +229,10 @@ frame7.grid(row=2, column=3, rowspan=1, columnspan=2, sticky="nsew")
 frame7.rowconfigure(0, weight=1)
 for i in range(2):
     frame7.columnconfigure(i, weight=1)
-button26 = tkinter.Button(frame7, image=None, command=lambda: button_click(2, 3))
+button26 = tkinter.Button(frame7, image=None, command=lambda: button_click_with_status(2, 3))
 button26.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(2, 3)] = button26
-button27 = tkinter.Button(frame7, image=None, command=lambda: button_click(2, 4))
+button27 = tkinter.Button(frame7, image=None, command=lambda: button_click_with_status(2, 4))
 button27.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(2, 4)] = button27
 
@@ -213,22 +244,22 @@ for i in range(2):
     frame8.rowconfigure(i, weight=1)
 for i in range(3):
     frame8.columnconfigure(i, weight=1)
-button28 = tkinter.Button(frame8, image=None, command=lambda: button_click(3, 3))
+button28 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(3, 3))
 button28.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(3, 3)] = button28
-button29 = tkinter.Button(frame8, image=None, command=lambda: button_click(3, 4))
+button29 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(3, 4))
 button29.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(3, 4)] = button29
-button30 = tkinter.Button(frame8, image=None, command=lambda: button_click(3, 5))
+button30 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(3, 5))
 button30.grid(row=0, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(3, 5)] = button30
-button31 = tkinter.Button(frame8, image=None, command=lambda: button_click(4, 3))
+button31 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(4, 3))
 button31.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(4, 3)] = button31
-button32 = tkinter.Button(frame8, image=None, command=lambda: button_click(4, 4))
+button32 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(4, 4))
 button32.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(4, 4)] = button32
-button33 = tkinter.Button(frame8, image=None, command=lambda: button_click(4, 5))
+button33 = tkinter.Button(frame8, image=None, command=lambda: button_click_with_status(4, 5))
 button33.grid(row=1, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(4, 5)] = button33
 
@@ -238,10 +269,10 @@ frame9.grid(row=3, column=6, rowspan=1, columnspan=2, sticky="nsew")
 frame9.rowconfigure(0, weight=1)
 for i in range(2):
     frame9.columnconfigure(i, weight=1)
-button34 = tkinter.Button(frame9, image=None, command=lambda: button_click(3, 6))
+button34 = tkinter.Button(frame9, image=None, command=lambda: button_click_with_status(3, 6))
 button34.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(3, 6)] = button34
-button35 = tkinter.Button(frame9, image=None, command=lambda: button_click(3, 7))
+button35 = tkinter.Button(frame9, image=None, command=lambda: button_click_with_status(3, 7))
 button35.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(3, 7)] = button35
 
@@ -251,13 +282,13 @@ frame10.grid(row=4, column=0, rowspan=1, columnspan=3, sticky="nsew")
 frame10.rowconfigure(0, weight=1)
 for i in range(3):
     frame10.columnconfigure(i, weight=1)
-button36 = tkinter.Button(frame10, image=None, command=lambda: button_click(4, 0))
+button36 = tkinter.Button(frame10, image=None, command=lambda: button_click_with_status(4, 0))
 button36.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(4, 0)] = button36
-button37 = tkinter.Button(frame10, image=None, command=lambda: button_click(4, 1))
+button37 = tkinter.Button(frame10, image=None, command=lambda: button_click_with_status(4, 1))
 button37.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(4, 1)] = button37
-button38 = tkinter.Button(frame10, image=None, command=lambda: button_click(4, 2))
+button38 = tkinter.Button(frame10, image=None, command=lambda: button_click_with_status(4, 2))
 button38.grid(row=0, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(4, 2)] = button38
 
@@ -269,16 +300,16 @@ for i in range(2):
     frame11.rowconfigure(i, weight=1)
 for i in range(2):
     frame11.columnconfigure(i, weight=1)
-button39 = tkinter.Button(frame11, image=None, command=lambda: button_click(4, 6))
+button39 = tkinter.Button(frame11, image=None, command=lambda: button_click_with_status(4, 6))
 button39.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(4, 6)] = button39
-button40 = tkinter.Button(frame11, image=None, command=lambda: button_click(4, 7))
+button40 = tkinter.Button(frame11, image=None, command=lambda: button_click_with_status(4, 7))
 button40.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(4, 7)] = button40
-button41 = tkinter.Button(frame11, image=None, command=lambda: button_click(5, 6))
+button41 = tkinter.Button(frame11, image=None, command=lambda: button_click_with_status(5, 6))
 button41.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(5, 6)] = button41
-button42 = tkinter.Button(frame11, image=None, command=lambda: button_click(5, 7))
+button42 = tkinter.Button(frame11, image=None, command=lambda: button_click_with_status(5, 7))
 button42.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(5, 7)] = button42
 
@@ -290,22 +321,22 @@ for i in range(3):
     frame12.rowconfigure(i, weight=1)
 for i in range(2):
     frame12.columnconfigure(i, weight=1)
-button43 = tkinter.Button(frame12, image=None, command=lambda: button_click(5, 0))
+button43 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(5, 0))
 button43.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(5, 0)] = button43
-button44 = tkinter.Button(frame12, image=None, command=lambda: button_click(5, 1))
+button44 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(5, 1))
 button44.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(5, 1)] = button44
-button45 = tkinter.Button(frame12, image=None, command=lambda: button_click(6, 0))
+button45 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(6, 0))
 button45.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(6, 0)] = button45
-button46 = tkinter.Button(frame12, image=None, command=lambda: button_click(6, 1))
+button46 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(6, 1))
 button46.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(6, 1)] = button46
-button47 = tkinter.Button(frame12, image=None, command=lambda: button_click(7, 0))
+button47 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(7, 0))
 button47.grid(row=2, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(7, 0)] = button47
-button48 = tkinter.Button(frame12, image=None, command=lambda: button_click(7, 1))
+button48 = tkinter.Button(frame12, image=None, command=lambda: button_click_with_status(7, 1))
 button48.grid(row=2, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(7, 1)] = button48
 
@@ -315,10 +346,10 @@ frame13.grid(row=5, column=2, rowspan=2, columnspan=1, sticky="nsew")
 for i in range(2):
     frame13.rowconfigure(i, weight=1)
 frame13.columnconfigure(0, weight=1)
-button49 = tkinter.Button(frame13, image=None, command=lambda: button_click(5, 2))
+button49 = tkinter.Button(frame13, image=None, command=lambda: button_click_with_status(5, 2))
 button49.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(5, 2)] = button49
-button50 = tkinter.Button(frame13, image=None, command=lambda: button_click(6, 2))
+button50 = tkinter.Button(frame13, image=None, command=lambda: button_click_with_status(6, 2))
 button50.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(6, 2)] = button50
 
@@ -330,16 +361,16 @@ for i in range(2):
     frame14.rowconfigure(i, weight=1)
 for i in range(2):
     frame14.columnconfigure(i, weight=1)
-button51 = tkinter.Button(frame14, image=None, command=lambda: button_click(5, 3))
+button51 = tkinter.Button(frame14, image=None, command=lambda: button_click_with_status(5, 3))
 button51.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(5, 3)] = button51
-button52 = tkinter.Button(frame14, image=None, command=lambda: button_click(5, 4))
+button52 = tkinter.Button(frame14, image=None, command=lambda: button_click_with_status(5, 4))
 button52.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(5, 4)] = button52
-button53 = tkinter.Button(frame14, image=None, command=lambda: button_click(6, 3))
+button53 = tkinter.Button(frame14, image=None, command=lambda: button_click_with_status(6, 3))
 button53.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(6, 3)] = button53
-button54 = tkinter.Button(frame14, image=None, command=lambda: button_click(6, 4))
+button54 = tkinter.Button(frame14, image=None, command=lambda: button_click_with_status(6, 4))
 button54.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(6, 4)] = button54
 
@@ -349,13 +380,13 @@ frame15.grid(row=5, column=5, rowspan=3, columnspan=1, sticky="nsew")
 for i in range(3):
     frame15.rowconfigure(i, weight=1)
 frame15.columnconfigure(0, weight=1)
-button55 = tkinter.Button(frame15, image=None, command=lambda: button_click(5, 5))
+button55 = tkinter.Button(frame15, image=None, command=lambda: button_click_with_status(5, 5))
 button55.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(5, 5)] = button55
-button56 = tkinter.Button(frame15, image=None, command=lambda: button_click(6, 5))
+button56 = tkinter.Button(frame15, image=None, command=lambda: button_click_with_status(6, 5))
 button56.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(6, 5)] = button56
-button57 = tkinter.Button(frame15, image=None, command=lambda: button_click(7, 5))
+button57 = tkinter.Button(frame15, image=None, command=lambda: button_click_with_status(7, 5))
 button57.grid(row=2, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(7, 5)] = button57
 
@@ -365,13 +396,13 @@ frame16.grid(row=7, column=2, rowspan=1, columnspan=3, sticky="nsew")
 frame16.rowconfigure(0, weight=1)
 for i in range(3):
     frame16.columnconfigure(i, weight=1)
-button58 = tkinter.Button(frame16, image=None, command=lambda: button_click(7, 2))
+button58 = tkinter.Button(frame16, image=None, command=lambda: button_click_with_status(7, 2))
 button58.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(7, 2)] = button58
-button59 = tkinter.Button(frame16, image=None, command=lambda: button_click(7, 3))
+button59 = tkinter.Button(frame16, image=None, command=lambda: button_click_with_status(7, 3))
 button59.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(7, 3)] = button59
-button60 = tkinter.Button(frame16, image=None, command=lambda: button_click(7, 4))
+button60 = tkinter.Button(frame16, image=None, command=lambda: button_click_with_status(7, 4))
 button60.grid(row=0, column=2, sticky="nsew", padx=40, pady=40)
 buttons[(7, 4)] = button60
 
@@ -383,16 +414,16 @@ for i in range(2):
     frame17.rowconfigure(i, weight=1)
 for i in range(2):
     frame17.columnconfigure(i, weight=1)
-button61 = tkinter.Button(frame17, image=None, command=lambda: button_click(6, 6))
+button61 = tkinter.Button(frame17, image=None, command=lambda: button_click_with_status(6, 6))
 button61.grid(row=0, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(6, 6)] = button61
-button62 = tkinter.Button(frame17, image=None, command=lambda: button_click(6, 7))
+button62 = tkinter.Button(frame17, image=None, command=lambda: button_click_with_status(6, 7))
 button62.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(6, 7)] = button62
-button63 = tkinter.Button(frame17, image=None, command=lambda: button_click(7, 6))
+button63 = tkinter.Button(frame17, image=None, command=lambda: button_click_with_status(7, 6))
 button63.grid(row=1, column=0, sticky="nsew", padx=40, pady=40)
 buttons[(7, 6)] = button63
-button64 = tkinter.Button(frame17, image=None, command=lambda: button_click(7, 7))
+button64 = tkinter.Button(frame17, image=None, command=lambda: button_click_with_status(7, 7))
 button64.grid(row=1, column=1, sticky="nsew", padx=40, pady=40)
 buttons[(7, 7)] = button64
 
