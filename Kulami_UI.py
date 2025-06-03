@@ -53,7 +53,7 @@ def button_click(x, y):
 
     # Time the AI move
     start_time = time.time()
-    result = functionbest.best_place(x, y, 13, last_move[0], last_move[1])
+    result = functionbest.best_place(x, y, 11, last_move[0], last_move[1])
     end_time = time.time()
 
     # Calculate and store timing

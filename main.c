@@ -14,7 +14,8 @@
 #define framecount 17
 #define data_length 8
 #define PORT 9000
-#define BOARD_POOL_SIZE 100
+#define BOARD_POOL_SIZE 400
+#define ROW_ARRAY_SIZE 2000
 #define DATA_SIZE_CLIENT (ROWS * COLUMNS + 5)  // Board + extra parameters
 int* best_place(int x, int y,int step, int lx, int ly);
 // Network communication helper functions
@@ -73,6 +74,14 @@ typedef struct {
 } BoardPool;
 
 BoardPool board_pool = {0};
+
+typedef struct{
+    int* arrays[ROW_ARRAY_SIZE];
+    bool used[ROW_ARRAY_SIZE];
+    int initialized;
+} Row_Array_Pool;
+
+Row_Array_Pool row_array_pool = {0};
 
 // Connection pooling for socket optimization
 static int cached_socket = -1;
@@ -186,6 +195,14 @@ void init_board_pool() {
     board_pool.initialized = 1;
 }
 
+void init_row_array_pool(){
+    for(int i = 0;i < ROW_ARRAY_SIZE;i++){
+        row_array_pool.arrays[i] = (int*)malloc(ROWS * sizeof(int));
+        row_array_pool.used[i] = false;
+    }
+    row_array_pool.initialized = 1;
+}
+
 int** get_board_from_pool() {
     for (int i = 0; i < BOARD_POOL_SIZE; i++) {
         if (!board_pool.used[i]) {
@@ -195,10 +212,37 @@ int** get_board_from_pool() {
     }
     // Pool exhausted, fallback to malloc
     int** board = (int**)malloc(ROWS * sizeof(int*));
+    if (!board) {
+        perror("Failed to allocate board from pool");
+        return NULL; // Handle allocation failure
+    }
     for (int i = 0; i < ROWS; i++) {
         board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        if (!board[i]) {
+            perror("Failed to allocate row in board from pool");
+            for (int j = 0; j < i; j++) {
+                free(board[j]);
+            }
+            free(board);
+            return NULL; // Handle allocation failure
+        }
     }
     return board;
+}
+
+int* get_row_array_from_pool(){
+    for(int i = 0;i < ROW_ARRAY_SIZE;i++){
+        if(!row_array_pool.used[i]){
+            row_array_pool.used[i] = true;
+            return row_array_pool.arrays[i];
+        }
+    }
+    int* array = (int*)malloc(ROWS * sizeof(int));
+    if (!array) {
+        perror("Failed to allocate row array from pool");
+        return NULL; // Handle allocation failure
+    }
+    return array;
 }
 
 void return_board_to_pool(int** board) {
@@ -213,6 +257,17 @@ void return_board_to_pool(int** board) {
         free(board[i]);
     }
     free(board);
+}
+
+void return_row_array_to_pool(int* array) {
+    for (int i = 0; i < ROW_ARRAY_SIZE; i++) {
+        if (row_array_pool.arrays[i] == array) {
+            row_array_pool.used[i] = false;
+            return;
+        }
+    }
+    // Not from pool, free normally
+    free(array);
 }
 
 void freedata2(Data2* data){
@@ -556,19 +611,12 @@ int generate_data() {
     int result_buffer[DATA_SIZE_CLIENT]; // Use a fixed-size buffer
 
     // Allocate local_board
-    local_board = (int**)malloc(ROWS * sizeof(int*));
+    local_board = (int**)get_board_from_pool();
     if (!local_board) {
         perror("Failed to allocate local_board (ROWS)");
         return -1;
     }
-    for (int i = 0; i < ROWS; i++) {
-        local_board[i] = (int*)malloc(COLUMNS * sizeof(int));
-        if (!local_board[i]) {
-            perror("Failed to allocate local_board (COLUMNS)");
-            free_local_board(local_board, i); // Free already allocated ROWS
-            return -1;
-        }
-    }
+    
 
     // --- First Connection: Get latest state (Mode 1) ---
     client_fd = socket(AF_INET, SOCK_STREAM, 0);
