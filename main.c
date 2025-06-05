@@ -5,6 +5,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <stdint.h>
+#include <limits.h>
 #include "kulami_config.h"
 
 #define calcfuncsize 6
@@ -16,8 +18,13 @@
 #define PORT 9000
 #define BOARD_POOL_SIZE 400
 #define ROW_ARRAY_SIZE 2000
-#define DATA_SIZE_CLIENT (ROWS * COLUMNS + 5)  // Board + extra parameters
-int* best_place(int x, int y,int step, int lx, int ly);
+#define DATA2_POOL_SIZE 1000
+#define DATA_POOL_SIZE 500
+#define NODE_POOL_SIZE 100
+#define INT_ARRAY_POOL_SIZE 300
+#define MAX_MOVE_BUFFER 64     // Maximum moves to consider in a turn
+#define DATA_SIZE_CLIENT (ROWS * COLUMNS + 7)  // Board + extra parameters
+int* best_place(int x, int y,int step, int lx, int ly, int userframe, int pcframe);
 // Network communication helper functions
 static ssize_t send_all(int sockfd, const void* buf, size_t len) {
     size_t total_sent = 0;
@@ -66,50 +73,6 @@ static inline int calculate_position_score(int x, int y) {
     return -(abs(x - ROWS/2) + abs(y - COLUMNS/2));
 }
 
-// Memory pool for board allocations
-typedef struct {
-    int** boards[BOARD_POOL_SIZE];
-    bool used[BOARD_POOL_SIZE];
-    int initialized;
-} BoardPool;
-
-BoardPool board_pool = {0};
-
-typedef struct{
-    int* arrays[ROW_ARRAY_SIZE];
-    bool used[ROW_ARRAY_SIZE];
-    int initialized;
-} Row_Array_Pool;
-
-Row_Array_Pool row_array_pool = {0};
-
-// Connection pooling for socket optimization
-static int cached_socket = -1;
-static struct sockaddr_in cached_server_addr;
-static bool socket_initialized = false;
-
-// Move ordering: prioritize center positions and high-scoring moves
-static inline int evaluate_move_priority(int x, int y, int** board) {
-    int score = 0;
-    
-    // Favor center positions (better connectivity)
-    score += 10 - (abs(x - ROWS/2) + abs(y - COLUMNS/2));
-    
-    // Check adjacent occupied positions (better for scoring)
-    int adjacent_count = 0;
-    for (int dx = -1; dx <= 1; dx++) {
-        for (int dy = -1; dy <= 1; dy++) {
-            if (dx == 0 && dy == 0) continue;
-            int nx = x + dx, ny = y + dy;
-            if (is_valid_position(nx, ny) && board[nx][ny] != 0) {
-                adjacent_count++;
-            }
-        }
-    }
-    score += adjacent_count * 5;
-    
-    return score;
-}
 
 int area = 0, userframe = -1, pcframe = -1;
 int genstep = -1, validlength = -1;
@@ -156,15 +119,18 @@ const int places_45[7][2] = {
 const int places_135[7][2] = {
         {7,4},{6,7},{5,7},{4,7},{7,5},{7,6},{7,7}
     };
+
+typedef struct Node {
+    int frame;
+} Node;
+
 typedef struct {
+    int color;
     int** board;
     int* horizontal_info;
     int* vertical_info;
 }Data2;
 
-typedef struct Node {
-    int frame;
-}Node;
 Node* newnode[ROWS][COLUMNS];
 typedef struct {
     int* data1;
@@ -181,10 +147,27 @@ typedef struct {
     int** board;
 }Data;
 
-// Memory pool functions for better performance
+Node* newnode[ROWS][COLUMNS];
+
+typedef struct {
+    int** boards[BOARD_POOL_SIZE];
+    bool used[BOARD_POOL_SIZE];
+    int initialized;
+} BoardPool;
+
+BoardPool board_pool = {0};
+
+typedef struct{
+    int* arrays[ROW_ARRAY_SIZE];
+    bool used[ROW_ARRAY_SIZE];
+    int initialized;
+} Row_Array_Pool;
+
+Row_Array_Pool row_array_pool = {0};
+
 void init_board_pool() {
     if (board_pool.initialized) return;
-    
+
     for (int i = 0; i < BOARD_POOL_SIZE; i++) {
         board_pool.boards[i] = (int**)malloc(ROWS * sizeof(int*));
         for (int j = 0; j < ROWS; j++) {
@@ -196,6 +179,7 @@ void init_board_pool() {
 }
 
 void init_row_array_pool(){
+    if (row_array_pool.initialized) return;
     for(int i = 0;i < ROW_ARRAY_SIZE;i++){
         row_array_pool.arrays[i] = (int*)malloc(ROWS * sizeof(int));
         row_array_pool.used[i] = false;
@@ -204,6 +188,9 @@ void init_row_array_pool(){
 }
 
 int** get_board_from_pool() {
+    if(!board_pool.initialized) {
+        init_board_pool();
+    }
     for (int i = 0; i < BOARD_POOL_SIZE; i++) {
         if (!board_pool.used[i]) {
             board_pool.used[i] = true;
@@ -231,6 +218,9 @@ int** get_board_from_pool() {
 }
 
 int* get_row_array_from_pool(){
+    if(!row_array_pool.initialized){
+        init_row_array_pool();
+    }
     for(int i = 0;i < ROW_ARRAY_SIZE;i++){
         if(!row_array_pool.used[i]){
             row_array_pool.used[i] = true;
@@ -269,12 +259,10 @@ void return_row_array_to_pool(int* array) {
     // Not from pool, free normally
     free(array);
 }
-
 void freedata2(Data2* data){
-    
     return_board_to_pool(data->board);
-    free(data->horizontal_info);
-    free(data->vertical_info);
+    return_row_array_to_pool(data->horizontal_info);
+    return_row_array_to_pool(data->vertical_info);
 }
 
 void freedata(Data* data){
@@ -328,6 +316,7 @@ int vertical_points(void *arg){
     Data2* data = (Data2*)arg;
     int** board = data->board;
 
+
     for (int j = 0;j < ROWS;j++){
         if(data->vertical_info[j] >= 5){
             length = 1;
@@ -365,8 +354,12 @@ int diagonal_points_45(void *arg){
     int length, pc = 0, user = 0, x, y, result;
 
     Data2* data = (Data2*)arg;
-    int** board = data->board;
-    
+    int** board = (int**)malloc(ROWS * sizeof(int*));
+    for (int i = 0;i < ROWS;i++){
+        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
+    }
+
     for(int i = 0;i < 7;i++){
         x = places_45[i][0];
         y = places_45[i][1];
@@ -402,14 +395,21 @@ int diagonal_points_45(void *arg){
     }
 
     result = pc - user;
-    
+    for (int i = 0;i < ROWS;i++){
+        free(board[i]);
+    }
+    free(board);
     return result;
 }
 int diagonal_points_135(void *arg){
     int length, pc = 0, user = 0,x,y, result;
 
     Data2* data = (Data2*)arg;
-    int** board = data->board;
+    int** board = (int**)malloc(ROWS * sizeof(int*));
+    for (int i = 0;i < ROWS;i++){
+        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
+    }
 
     for(int i = 0;i < 7;i++){
         x = places_135[i][0];
@@ -446,7 +446,10 @@ int diagonal_points_135(void *arg){
     }
 
     result = pc - user;
-    
+    for (int i = 0;i < ROWS;i++){
+        free(board[i]);
+    }
+    free(board);
     return result;
 }
 int dfs(int i,int j,int** board,int color){
@@ -459,7 +462,11 @@ int dfs(int i,int j,int** board,int color){
 int marble_area_points(void *arg){
     Data2* data = (Data2*)arg;
     int user = 0, pc = 0, temp, result;
-    int** board = data->board;
+    int** board = (int**)malloc(ROWS * sizeof(int*));
+    for (int i = 0;i < ROWS;i++){
+        board[i] = (int*)malloc(COLUMNS * sizeof(int));
+        memcpy(board[i],data->board[i],COLUMNS * sizeof(int));
+    }
 
     for(int i = 0;i < ROWS;i++){
         for(int j = 0;j < COLUMNS;j++){
@@ -479,15 +486,18 @@ int marble_area_points(void *arg){
 
     result = pc - user;
 
-    
+    for (int i = 0;i < ROWS;i++){
+        free(board[i]);
+    }
+    free(board);
     return result;
 }
 int place_area_points(void *arg){
-    int pc = 0, user = 0, total_points = 0, result;
+    int pc = 0,user = 0,length = 0, result;
     Data2* data = (Data2*)arg;
     int** board = data->board;
 
-    for (int i = 0; i < 17; i++){
+    for (int i = 0;i < 17;i++){
         pc = 0;
         user = 0;
         for (int j = 1; j < 2 * frames[i][0]; j += 2){
@@ -499,14 +509,13 @@ int place_area_points(void *arg){
             }
         }
         if (pc > user){
-            total_points += frames[i][0];
+            length += frames[i][0];
         }
         else if (user > pc){
-            total_points -= frames[i][0];
+            length -= frames[i][0];
         }
-
     }
-    result = total_points;
+    result = length;
     return result;
 }
 Data2* copydata2(Data2* data){
@@ -527,12 +536,12 @@ Data2* copydata2(Data2* data){
 
 int calculate(int** board){
     Data2* data = (Data2*)malloc(sizeof(Data2));
-    data->board = (int**)get_board_from_pool();
+    data->board = get_board_from_pool();
     for (int i = 0;i < ROWS;i++){
         memcpy(data->board[i],board[i],COLUMNS * sizeof(int));
     }
-    data->horizontal_info = (int*)malloc(ROWS * sizeof(int));
-    data->vertical_info = (int*)malloc(COLUMNS * sizeof(int));
+    data->horizontal_info = get_row_array_from_pool();
+    data->vertical_info = get_row_array_from_pool();
     for(int i = 0;i < ROWS;i++){
         data->horizontal_info[i] = 0;
         data->vertical_info[i] = 0;
@@ -547,7 +556,7 @@ int calculate(int** board){
             }
         }
     }
-    
+
     int sum = 0;
     sum += horizontal_points((void*)data);
     sum += vertical_points((void*)data);
@@ -570,38 +579,6 @@ int which(int x, int y){
         }
     }
     return -1;
-}
-int* findvalid(Data* data){
-    int info1, info2, length = 0;
-    int* result = (int*)malloc(2 * directionsize * sizeof(int));
-    printf("BEFORE INFO!-1\n");
-    if (data->data1[3] > -1 && data->data1[4] > -1){
-        info1 = newnode[data->data1[3]][data->data1[4]]->frame;
-    }else{
-        info1 = -1;
-    }
-    info2 = newnode[data->data1[0]][data->data1[1]]->frame;
-    for (int k = 0;k < directionsize;k++){
-        if ((data->data1[0] + directions[k][0] != data->data1[3] ||
-            data->data1[1] + directions[k][1] != data->data1[4]) &&
-            data->data1[0] + directions[k][0] < ROWS &&
-            data->data1[0] + directions[k][0] > -1 &&
-            data->data1[1] + directions[k][1] < COLUMNS &&
-            data->data1[1] + directions[k][1] > -1 &&
-            data->board[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]] == 0 &&
-            newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info1 &&
-            newnode[data->data1[0] + directions[k][0]][data->data1[1] + directions[k][1]]->frame != info2){
-                result[2 * length] = data->data1[0] + directions[k][0];
-                result[2 * length + 1] = data->data1[1] + directions[k][1];
-                length++;
-        }
-    }
-    validlength = length-1;
-    for(int k = length;k < directionsize;k++){
-        result[2 * k] = -1;
-        result[2 * k + 1] = -1;
-    }
-    return result;
 }
 
 int generate_data() {
@@ -697,7 +674,9 @@ int generate_data() {
 
         // Call game logic
         printf("Calling best_place logic...\n");
-        best_place_res = best_place(result_buffer[DATA_SIZE_CLIENT - 5],
+        best_place_res = best_place(result_buffer[DATA_SIZE_CLIENT - 7],
+                                result_buffer[DATA_SIZE_CLIENT - 6],
+                                    result_buffer[DATA_SIZE_CLIENT - 5],
                                    result_buffer[DATA_SIZE_CLIENT - 4],
                                    result_buffer[DATA_SIZE_CLIENT - 3],
                                    result_buffer[DATA_SIZE_CLIENT - 2],
@@ -830,6 +809,34 @@ static inline int piece_count(int** board){
     }
     return count;
 }
+
+// Enhanced move evaluation for better ordering
+static inline int evaluate_move_score(int x, int y, int** board) {
+    int score = 0;
+    
+    // Center positions are better
+    score += 20 - (abs(x - ROWS/2) + abs(y - COLUMNS/2)) * 2;
+    
+    // Count adjacent pieces (connectivity bonus)
+    int adjacent = 0;
+    for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+            if (dx == 0 && dy == 0) continue;
+            int nx = x + dx, ny = y + dy;
+            if (is_valid_position(nx, ny) && board[nx][ny] != 0) {
+                adjacent++;
+            }
+        }
+    }
+    score += adjacent * 15;
+    
+    // Edge and corner penalties
+    if (x == 0 || x == ROWS-1) score -= 5;
+    if (y == 0 || y == COLUMNS-1) score -= 5;
+    if ((x == 0 || x == ROWS-1) && (y == 0 || y == COLUMNS-1)) score -= 10;
+    
+    return score;
+}
 int moves[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
 // Helper function for quicksort
 void swap_moves(int directions_local[][2], int direction_scores[], int i, int j) {
@@ -914,7 +921,7 @@ int* search(void *arg){
         info1 = -1;
     }
     info2 = newnode[data->data1[0]][data->data1[1]]->frame;
-    data->board[data->data1[0]][data->data1[1]] = data->data1[5]; // THIS MAY BE UNNECESSARY
+    data->board[data->data1[0]][data->data1[1]] = data->data1[5];
 
     if (data->data1[5] == 2){
         data->data1[5] = 1;
@@ -928,6 +935,7 @@ int* search(void *arg){
     bool got_into = false;
 
     for(int k = 0;k < directionsize;k++){
+        //  result[0] + x 
         if ((data->data1[0] + directions[k][0] != data->data1[3] ||
             data->data1[1] + directions[k][1] != data->data1[4]) &&
             data->data1[0] + directions[k][0] < ROWS &&
@@ -948,7 +956,7 @@ int* search(void *arg){
     if (move_count > 1) {
         quicksort_moves(directions_local, direction_scores, 0, move_count - 1);
     }
-    
+
     for (int k = 0;k < move_count;k++){
             got_into = true;
             data->board[data->data1[0] + directions_local[k][0]][data->data1[1] + directions_local[k][1]] = data->data1[5];
@@ -1027,18 +1035,20 @@ int* search(void *arg){
     return result;
 }
 
-int* best_place(int x, int y,int step, int lx, int ly){
+int* best_place(int x, int y,int step, int lx, int ly,int userframe ,int pcframe){// username pc frame ekle
     int i, j;
     printf("START SEARCH\n");
+    printf("Debug: Starting search at position (%d,%d) with step %d, lx %d, ly %d, userframe %d, pcframe %d\n", x, y, step, lx, ly, userframe, pcframe);
     board2[x][y] = 1;
 
     genstep = step;
     i = newnode[x][y]->frame;
     if (i != userframe && i != pcframe){
         userframe = i;
+        printf("Debug: Updated userframe to %d\n", userframe);
     }
     else{
-        printf("FRAME ERROR\n");
+        printf("FRAME ERROR: frame conflict at position (%d,%d) - frame=%d already used (userframe=%d, pcframe=%d)\n", x, y, i, userframe, pcframe);
         int* temp;
         temp = (int*)malloc(2 * sizeof(int));
         temp[0] = -1;
@@ -1065,24 +1075,22 @@ int* best_place(int x, int y,int step, int lx, int ly){
 
     data.board = board;
 
-
-    file = fopen("data.txt","a");
+    file = fopen("data.csv","a");
+    fprintf(file,"%d, %d, %d, %d, ",x,y,lx,ly);
     for(int i = 0;i < ROWS;i++){
         for(int j = 0;j < COLUMNS;j++){
-            fprintf(file,"%d ",board2[i][j]);
+            fprintf(file,"%d, ",board2[i][j]);
         }
     }
-    fprintf(file, "---> ");
 
     temp = search((void*)&data);
-    fprintf(file,"(%d,%d)\n",temp[0],temp[1]);
+    fprintf(file,"%d, %d\n",temp[0],temp[1]);
     fclose(file);
 
     // Clean up memory
     return_board_to_pool(board);
     free(data.data1);
 
-    printf("X: %d Y: %d\n",temp[0],temp[1]);
     board2[temp[0]][temp[1]] = 2;
 
     j = newnode[temp[0]][temp[1]]->frame;
@@ -1092,61 +1100,16 @@ int* best_place(int x, int y,int step, int lx, int ly){
     else{
         printf("PC FRAME ERROR\n");
     }
-    printf("calculate : %d\n",calculate(board2));
     return temp;
 }
 
 int main(){
-    // Initialize memory pool for better performance
+    // Initialize memory pools for better performance
     init_board_pool();
-    int mode;
-    printf("Enter the mode (0 for normal, 1 for test): ");
-    scanf("%d", &mode);
-    if (mode == 1) {
-        printf("Running in test mode.\n");
-        Data2* data2 = (Data2*)malloc(sizeof(Data2));
-        data2->board = (int**)get_board_from_pool();
-        for (int i = 0; i < ROWS; i++) {
-            for (int j = 0; j < COLUMNS; j++) {
-                printf("Enter value for board[%d][%d]: ", i, j);
-                scanf("%d",&data2->board[i][j]);
-                printf("\n");
-            }
-        }
-
-        data2->horizontal_info = (int*)malloc(ROWS * sizeof(int));
-        data2->vertical_info = (int*)malloc(COLUMNS * sizeof(int));
-        for(int i = 0;i < ROWS;i++){
-            data2->horizontal_info[i] = 0;
-            data2->vertical_info[i] = 0;
-        }
-        for(int i = 0;i < ROWS;i++){
-            for(int j = 0;j < COLUMNS;j++){
-                if(data2->board[i][j] != 0){
-                    data2->horizontal_info[i]++;
-                }
-                if(data2->board[j][i] != 0){
-                    data2->vertical_info[i]++;
-                }
-            }
-        }
-        printf("Horizontal points: %d\n", horizontal_points((void*)data2));
-        printf("Vertical points: %d\n", vertical_points((void*)data2));
-        printf("Diagonal 45 points: %d\n", diagonal_points_45((void*)data2));
-        printf("Diagonal 135 points: %d\n", diagonal_points_135((void*)data2));
-        printf("Place area points: %d\n", place_area_points((void*)data2));
-        printf("Marble area points: %d\n", marble_area_points((void*)data2));
-
-        return 0;
-    } else {
-        printf("Running in normal mode.\n");
-    }
     
     
-    board2 = (int**)malloc(ROWS * sizeof(int*));
-    for(int i = 0;i < ROWS;i++){
-        board2[i] = (int*)malloc(COLUMNS * sizeof(int));
-    }
+    
+    board2 = get_board_from_pool();
     // make everywhere empty
     for (int i = 0;i < ROWS; i++){
         for (int j = 0;j < COLUMNS;j++){

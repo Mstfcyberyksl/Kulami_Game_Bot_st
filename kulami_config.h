@@ -8,10 +8,6 @@
 #define MAX_SEARCH_DEPTH 12
 #define HASH_TABLE_SIZE 1000003  // Prime number for better distribution
 
-// Memory pool settings
-#define BOARD_POOL_SIZE 100
-#define ENABLE_MEMORY_POOL 1
-
 // Network optimization settings
 #define ENABLE_CONNECTION_POOLING 1
 #define SOCKET_TIMEOUT_MS 5000
